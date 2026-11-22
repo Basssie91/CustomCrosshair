@@ -722,11 +722,11 @@ namespace CustomCrosshair
         string[] opts; int idx; Action<int> cb;
         public ChoiceRow(string glyph, string caption, string[] opts, int value, Action<int> cb) : base(glyph, caption, 32)
         { this.opts = opts; idx = Math.Max(0, Math.Min(opts.Length - 1, value)); this.cb = cb; Cursor = Cursors.Hand; }
-        Rectangle Chip { get { return new Rectangle(Width - 134, 3, 134, Height - 6); } }
+        Rectangle Chip { get { return new Rectangle(Width - 150, 3, 150, Height - 6); } }
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            PaintCaption(g, 0, 0, Height, Theme.Text, Width - 140);
+            PaintCaption(g, 0, 0, Height, Theme.Text, Width - 156);
             Rectangle c = Chip;
             Theme.FillRound(g, Hover ? Color.FromArgb(40, 40, 47) : Color.FromArgb(32, 32, 38), c, 6);
             Theme.Label(g, "\u2039", Theme.Title, Theme.Dim, new Rectangle(c.X + 4, c.Y, 20, c.Height), TextFormatFlags.HorizontalCenter);
@@ -1345,6 +1345,7 @@ namespace CustomCrosshair
             AddNav("\uE790", "Kleur", 1, 144);
             AddNav("\uE8FD", "Profielen", 2, 184);
             AddNav("\uE713", "Instellingen", 3, 256);
+            AddNav("\uE895", "Updates", 4, 296);
 
             CloseButton close = new CloseButton(delegate { Toggle(); });
             close.Location = new Point(ClientSize.Width - 46, 12);
@@ -1443,6 +1444,7 @@ namespace CustomCrosshair
             if (page == 0) { names = new string[] { "Vorm", "Positie" }; glyphs = new string[] { "\uE8B3", "\uE8AB" }; }
             else if (page == 1) { names = new string[] { "Kleur" }; glyphs = new string[] { "\uE790" }; }
             else if (page == 2) { names = new string[] { "Profielen" }; glyphs = new string[] { "\uE8FD" }; }
+            else if (page == 4) { names = new string[] { "Updates" }; glyphs = new string[] { "\uE895" }; }
             else { names = new string[] { "Algemeen" }; glyphs = new string[] { "\uE713" }; }
             int x = SideW + 14;
             for (int i = 0; i < names.Length; i++)
@@ -1516,7 +1518,7 @@ namespace CustomCrosshair
             content.SuspendLayout();
             while (content.Controls.Count > 0) content.Controls[0].Dispose();
             int cw = (content.Width - 12) / 2;
-            Card L = null, R = null, C = null, U = null;
+            Card L = null, R = null, C = null;
             bool stacked = false;
 
             if (page == 0 && tab == 0)
@@ -1606,6 +1608,16 @@ namespace CustomCrosshair
                 codeInput = C.Add(new InputRow("Plak hier een code (BC-...)", delegate { UseCode(codeInput.Value); }));
                 C.Add(new ButtonRow("\uE896", "Code gebruiken", false, delegate { UseCode(codeInput.Value); }));
             }
+            else if (page == 4)
+            {
+                L = new Card("\uE895", "Updates", cw);
+                L.Add(new InfoRow("Klik hieronder om te kijken of er een update is. Is die er, dan wordt hij meteen geinstalleerd.", 36));
+                L.Add(new PrimaryButton("Nu op updates controleren", delegate { Updater.Check(this, true); }));
+                L.Add(new ToggleRow("\uE895", "Automatisch controleren bij opstarten", s.AutoUpdate, v => { s.AutoUpdate = v; Changed(); }));
+
+                R = new Card("\uE946", "Hoe werkt het", cw);
+                R.Add(new InfoRow("Bij het opstarten kijkt de app op GitHub of er een update is. Zo ja, dan vraagt hij of je wilt updaten. Klik op Ja en de app werkt zichzelf bij en start opnieuw op. Je instellingen en profielen blijven bewaard.", 96));
+            }
             else
             {
                 L = new Card("\uE713", "Algemeen", cw);
@@ -1634,11 +1646,6 @@ namespace CustomCrosshair
                 }));
                 L.Add(new InfoRow("Streamproof aan = crosshair en menu zijn onzichtbaar in OBS, Discord-streams, opnames en screenshots. Jij ziet ze gewoon.", 44));
 
-                U = new Card("\uE895", "Updates", cw);
-                U.Add(new InfoRow("Klik hieronder om te kijken of er een update is.", 22));
-                U.Add(new PrimaryButton("Nu op updates controleren", delegate { Updater.Check(this, true); }));
-                U.Add(new ToggleRow("\uE895", "Automatisch controleren bij opstarten", s.AutoUpdate, v => { s.AutoUpdate = v; Changed(); }));
-
                 R = new Card("\uE946", "Overig", cw);
                 R.Add(new InfoRow("Alles wordt automatisch opgeslagen. Zet je game op 'Venster zonder rand', anders zie je de crosshair niet.", 48));
                 R.Add(new ButtonRow("\uE77B", "Naam wijzigen", false, delegate
@@ -1656,11 +1663,6 @@ namespace CustomCrosshair
             {
                 R.Location = stacked ? new Point(0, L.Height + 12) : new Point(cw + 12, 0);
                 content.Controls.Add(R);
-            }
-            if (U != null)
-            {
-                U.Location = new Point(0, L.Bottom + 12);
-                content.Controls.Add(U);
             }
             if (C != null)
             {
@@ -1743,7 +1745,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.3";
+        public const string Version = "1.0.4";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
