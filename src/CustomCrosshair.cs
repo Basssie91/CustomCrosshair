@@ -40,6 +40,7 @@ namespace CustomCrosshair
         public int OnboardV = 0;
         public bool TourDone = false;
         public string LastSeenVersion = "";
+        public string NewsSeenVersion = "";
         public int MenuOpacity = 100;
         public string ImageFile = "";
         public int ImageScale = 100;
@@ -121,6 +122,7 @@ namespace CustomCrosshair
                 case "OnboardV": if (ok) OnboardV = n; break;
                 case "TourDone": TourDone = v == "True"; break;
                 case "LastSeenVersion": LastSeenVersion = v; break;
+                case "NewsSeenVersion": NewsSeenVersion = v; break;
                 case "Accent": if (ok) Accent = Color.FromArgb(255, Color.FromArgb(n)); break;
                 case "MenuOpacity": if (ok) MenuOpacity = Math.Max(70, Math.Min(100, n)); break;
                 case "ImageFile": ImageFile = v; break;
@@ -160,7 +162,7 @@ namespace CustomCrosshair
                 l.Add("ShowMenuOnStart=" + ShowMenuOnStart); l.Add("StreamProof=" + StreamProof);
                 l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
                 l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile);
-                l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
+                l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("NewsSeenVersion=" + NewsSeenVersion); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -1648,6 +1650,27 @@ namespace CustomCrosshair
         }
     }
 
+    public class NewsButton : Ctl
+    {
+        Func<bool> unseen; Action click;
+        public NewsButton(Func<bool> unseen, Action click) { this.unseen = unseen; this.click = click; Height = 32; Cursor = Cursors.Hand; }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            RectangleF r = new RectangleF(0, 0, Width - 1, Height - 1);
+            Theme.FillRound(g, Hover ? Theme.Hover : Theme.Card, r, 9);
+            Theme.Glyph(g, "\uE789", Theme.Accent, new Rectangle(12, 0, 20, Height));
+            Theme.Label(g, "Nieuws", Theme.Bold, Theme.Text, new Rectangle(40, 0, 100, Height), TextFormatFlags.Left);
+            if (unseen())
+            {
+                RectangleF pill = new RectangleF(Width - 58, 8, 48, 16);
+                Theme.FillRound(g, Theme.Accent, pill, 8);
+                Theme.Label(g, "NIEUW", Theme.Small, Theme.AccentText, Rectangle.Round(pill), TextFormatFlags.HorizontalCenter);
+            }
+        }
+        protected override void OnMouseClick(MouseEventArgs e) { if (e.Button == MouseButtons.Left) click(); base.OnMouseClick(e); }
+    }
+
     public class LinkRow : Ctl
     {
         string text; Action click;
@@ -2314,6 +2337,8 @@ namespace CustomCrosshair
         int TabY { get { return Theme.Glass ? 68 : 12; } }
 
         JumpBar jumpBar;
+        NewsButton newsBtn;
+        Panel contentHost;
 
         void ApplyLayout()
         {
@@ -2322,7 +2347,26 @@ namespace CustomCrosshair
             {
                 n.Visible = true;
                 n.BackColor = Theme.Sidebar;
-                n.SetBounds(12, 84 + n.SideTop * 42, 176, 36);
+                n.SetBounds(12, 108 + n.SideTop * 42, 176, 36);
+            }
+            if (newsBtn == null)
+            {
+                newsBtn = new NewsButton(() => s.NewsSeenVersion != Updater.Version, delegate
+                {
+                    s.NewsSeenVersion = Updater.Version;
+                    s.Save();
+                    newsBtn.Invalidate();
+                    BeginInvoke(new Action(ShowWhatsNew));
+                });
+                Controls.Add(newsBtn);
+            }
+            newsBtn.BackColor = Theme.Sidebar;
+            newsBtn.SetBounds(12, 62, 176, 32);
+            if (contentHost == null)
+            {
+                contentHost = new Panel();
+                Controls.Add(contentHost);
+                contentHost.Controls.Add(content);
             }
             if (leftPanel == null)
             {
@@ -2337,7 +2381,9 @@ namespace CustomCrosshair
             jumpBar.Visible = false;
             leftPanel.SetBounds(670, 56, 314, ClientSize.Height - 72);
             leftPanel.BackColor = Theme.Window;
-            content.SetBounds(220, 92, 434, ClientSize.Height - 104);
+            contentHost.SetBounds(220, 92, 434, ClientSize.Height - 104);
+            contentHost.BackColor = Theme.Window;
+            content.SetBounds(0, 0, 434 + SystemInformation.VerticalScrollBarWidth, ClientSize.Height - 104);
             content.BackColor = Theme.Window;
             close.BackColor = Theme.Window;
             close.Location = new Point(ClientSize.Width - 44, 12);
@@ -3393,11 +3439,11 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.7.1";
+        public const string Version = "1.7.2";
         public static readonly string[] Notes = new string[] {
-            "Rondleiding opnieuw bekijken via Instellingen",
-            "Knop 'Wat is er nieuw' op de pagina Updates",
-            "Nieuw opstartscherm en rondleiding voor nieuwe gebruikers" };
+            "Nieuws-knop linksboven in plaats van een pop-up",
+            "Geen witte scrollbalk meer in het menu",
+            "Rondleiding opnieuw bekijken via Instellingen" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -3836,11 +3882,9 @@ namespace CustomCrosshair
             KeyHook.Start();
 
             bool tour = !S.TourDone;
-            bool whatsNew = !tour && S.LastSeenVersion.Length > 0 && S.LastSeenVersion != Updater.Version;
-            if (S.ShowMenuOnStart || tour || whatsNew) menu.Toggle();
+            if (S.ShowMenuOnStart || tour) menu.Toggle();
             if (S.LastSeenVersion != Updater.Version) { S.LastSeenVersion = Updater.Version; S.Save(); }
             if (tour) menu.BeginInvoke(new Action(menu.StartTour));
-            else if (whatsNew) menu.BeginInvoke(new Action(menu.ShowWhatsNew));
             Timer upd = new Timer();
             upd.Interval = 30 * 60 * 1000;
             upd.Tick += delegate { Updater.Check(overlay, false); };
