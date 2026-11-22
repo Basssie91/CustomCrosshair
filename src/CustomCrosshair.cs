@@ -1735,7 +1735,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.0";
+        public const string Version = "1.0.1";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
