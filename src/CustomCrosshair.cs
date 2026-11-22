@@ -33,6 +33,9 @@ namespace CustomCrosshair
         public string UserName = "";
         public bool AutoUpdate = true;
         public string TargetApp = "";
+        public int MenuTheme = 0;
+        public Color Accent = Color.FromArgb(225, 225, 230);
+        public int MenuOpacity = 100;
         public string ImageFile = "";
         public int ImageScale = 100;
         public string Pixels = DefaultPixels();
@@ -106,6 +109,9 @@ namespace CustomCrosshair
                 case "UserName": UserName = v; break;
                 case "AutoUpdate": AutoUpdate = v == "True"; break;
                 case "TargetApp": TargetApp = v; break;
+                case "MenuTheme": if (ok) MenuTheme = Math.Max(0, Math.Min(1, n)); break;
+                case "Accent": if (ok) Accent = Color.FromArgb(255, Color.FromArgb(n)); break;
+                case "MenuOpacity": if (ok) MenuOpacity = Math.Max(70, Math.Min(100, n)); break;
                 case "ImageFile": ImageFile = v; break;
                 case "ImageScale": if (ok) ImageScale = Math.Max(10, Math.Min(400, n)); break;
                 case "PixelSize": if (ok) PixelSize = Math.Max(1, Math.Min(6, n)); break;
@@ -142,6 +148,7 @@ namespace CustomCrosshair
                 l.Add("Enabled=" + Enabled); l.Add("MenuKey=" + MenuKey);
                 l.Add("ShowMenuOnStart=" + ShowMenuOnStart); l.Add("StreamProof=" + StreamProof);
                 l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
+                l.Add("MenuTheme=" + MenuTheme); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -680,6 +687,23 @@ namespace CustomCrosshair
         public static readonly Font HeavySmall = new Font("Segoe UI Black", 9.5f, FontStyle.Italic);
         public static readonly Font Spaced = new Font("Segoe UI", 7.5f, FontStyle.Bold);
 
+        public static int Style = 0;   // 0 = Clean, 1 = Lounge
+        public static Color Accent = Color.FromArgb(225, 225, 230);
+        public static Color AccentText = Color.FromArgb(18, 18, 22);
+        public static readonly string[] StyleNames = new string[] { "Clean", "Lounge" };
+
+        public static void Apply(int style, Color accent)
+        {
+            Style = style;
+            Accent = Color.FromArgb(255, accent.R, accent.G, accent.B);
+            int lum = (accent.R * 299 + accent.G * 587 + accent.B * 114) / 1000;
+            AccentText = lum > 150 ? Color.FromArgb(18, 18, 22) : Color.White;
+        }
+
+        public static bool Lounge { get { return Style == 1; } }
+        public static Font Header { get { return Lounge ? HeavySmall : Bold; } }
+        public static string Up(string s) { return Lounge ? s.ToUpper() : s; }
+
         public static string Caps(string s)
         {
             return string.Join("\u2009", Array.ConvertAll(s.ToUpper().ToCharArray(), c => c.ToString()));
@@ -803,10 +827,10 @@ namespace CustomCrosshair
             Graphics g = e.Graphics;
             PaintCaption(g, 0, 0, Height, on ? Theme.Text : Theme.Dim, Width - 50);
             RectangleF r = new RectangleF(Width - 36, (Height - 18) / 2f, 34, 18);
-            Theme.FillRound(g, on ? Color.FromArgb(205, 205, 212) : Color.FromArgb(44, 44, 50), r, 9);
+            Theme.FillRound(g, on ? Theme.Accent : Color.FromArgb(44, 44, 50), r, 9);
             float k = 12;
             float kx = on ? r.Right - k - 3 : r.X + 3;
-            using (SolidBrush b = new SolidBrush(on ? Color.FromArgb(28, 28, 32) : Color.FromArgb(95, 95, 104)))
+            using (SolidBrush b = new SolidBrush(on ? Theme.AccentText : Color.FromArgb(95, 95, 104)))
                 g.FillEllipse(b, kx, r.Y + 3, k, k);
         }
         protected override void OnMouseClick(MouseEventArgs e)
@@ -837,7 +861,7 @@ namespace CustomCrosshair
             Theme.FillRound(g, Color.FromArgb(48, 48, 54), t, 2);
             float f = (val - min) / (float)(max - min);
             float x = t.X + f * t.Width;
-            Theme.FillRound(g, Color.FromArgb(210, 210, 216), new RectangleF(t.X, t.Y, x - t.X, t.Height), 2);
+            Theme.FillRound(g, Theme.Accent, new RectangleF(t.X, t.Y, x - t.X, t.Height), 2);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using (SolidBrush sh = new SolidBrush(Color.FromArgb(90, 0, 0, 0)))
                 g.FillEllipse(sh, x - 8, t.Y + 2 - 7, 16, 16);
@@ -1243,6 +1267,61 @@ namespace CustomCrosshair
         protected override void OnMouseUp(MouseEventArgs e) { painting = false; Capture = false; base.OnMouseUp(e); }
     }
 
+    public class ThemeTiles : Ctl
+    {
+        Func<int> get; Action<int> set; int hover = -1;
+        public ThemeTiles(Func<int> get, Action<int> set) { this.get = get; this.set = set; Height = 118; Cursor = Cursors.Hand; }
+        Rectangle Tile(int i) { int w = (Width - 10) / 2; return new Rectangle(i * (w + 10), 0, w, Height - 1); }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            for (int i = 0; i < 2; i++)
+            {
+                Rectangle r = Tile(i);
+                bool sel = get() == i;
+                Theme.FillRound(g, hover == i ? Color.FromArgb(32, 32, 38) : Color.FromArgb(27, 27, 32), r, 8);
+                Theme.DrawRound(g, sel ? Theme.Accent : Theme.Border, r, 8);
+                if (sel) Theme.DrawRound(g, Theme.Accent, Rectangle.Inflate(r, -1, -1), 7);
+                // mini-menu
+                Rectangle m = new Rectangle(r.X + 10, r.Y + 10, r.Width - 20, 70);
+                Theme.FillRound(g, Color.FromArgb(16, 16, 19), m, 5);
+                using (SolidBrush sb = new SolidBrush(Color.FromArgb(11, 11, 13))) g.FillRectangle(sb, m.X, m.Y + 3, 34, m.Height - 6);
+                using (SolidBrush ab = new SolidBrush(Theme.Accent)) g.FillRectangle(ab, m.X + 4, m.Y + 20, 2, 8);
+                using (SolidBrush lb = new SolidBrush(Color.FromArgb(70, 70, 80)))
+                {
+                    g.FillRectangle(lb, m.X + 9, m.Y + 22, 18, 3);
+                    g.FillRectangle(lb, m.X + 9, m.Y + 32, 18, 3);
+                    g.FillRectangle(lb, m.X + 9, m.Y + 42, 18, 3);
+                }
+                Rectangle c = new Rectangle(m.X + 40, m.Y + 22, m.Width - 46, m.Height - 28);
+                Theme.FillRound(g, Color.FromArgb(26, 26, 31), c, i == 1 ? 2 : 4);
+                if (i == 1)
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (LinearGradientBrush lg = new LinearGradientBrush(new Rectangle(m.Right - 60, m.Y + 5, 56, 12), Color.FromArgb(200, 200, 206), Color.FromArgb(244, 244, 247), 0f))
+                        g.FillPolygon(lg, new PointF[] { new PointF(m.Right - 56, m.Y + 5), new PointF(m.Right - 4, m.Y + 5), new PointF(m.Right - 4, m.Y + 15), new PointF(m.Right - 60, m.Y + 15) });
+                    using (SolidBrush wb = new SolidBrush(Theme.Text)) g.FillRectangle(wb, c.X + 6, c.Y + 13, 12, 2);
+                }
+                using (SolidBrush tb = new SolidBrush(Color.FromArgb(90, 90, 100))) g.FillRectangle(tb, c.X + 6, c.Y + 6, 30, 4);
+                Theme.FillRound(g, Theme.Accent, new RectangleF(c.Right - 20, c.Bottom - 12, 14, 7), 3.5f);
+                Theme.Label(g, Theme.StyleNames[i], i == 1 ? Theme.HeavySmall : Theme.Bold, sel ? Theme.Text : Theme.Dim,
+                            new Rectangle(r.X, r.Bottom - 32, r.Width, 26), TextFormatFlags.HorizontalCenter);
+            }
+        }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int h = Tile(0).Contains(e.Location) ? 0 : (Tile(1).Contains(e.Location) ? 1 : -1);
+            if (h != hover) { hover = h; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            for (int i = 0; i < 2; i++) if (Tile(i).Contains(e.Location) && get() != i) { set(i); break; }
+            base.OnMouseClick(e);
+        }
+    }
+
     public class KeyRow : Row
     {
         int vk; bool capturing; Action<int> cb;
@@ -1407,11 +1486,12 @@ namespace CustomCrosshair
         {
             Graphics g = e.Graphics;
             RectangleF r = new RectangleF(0, 0, Width - 1, Height - 1);
-            Theme.FillRound(g, Theme.Card, r, 5);
-            Theme.DrawRound(g, Theme.Border, r, 5);
-            Theme.Glyph(g, glyph, Theme.Dim, new Rectangle(16, 12, 18, 22));
-            Theme.Label(g, title.ToUpper(), Theme.HeavySmall, Theme.Text, new Rectangle(42, 12, Width - 60, 22), TextFormatFlags.Left);
-            Theme.Bar(g, Theme.Text, 43, 35, 26);
+            float rad = Theme.Lounge ? 5 : 9;
+            Theme.FillRound(g, Theme.Card, r, rad);
+            Theme.DrawRound(g, Theme.Border, r, rad);
+            Theme.Glyph(g, glyph, Theme.Lounge ? Theme.Dim : Theme.Accent, new Rectangle(16, 12, 18, 24));
+            Theme.Label(g, Theme.Up(title), Theme.Header, Theme.Text, new Rectangle(42, 12, Width - 60, 24), TextFormatFlags.Left);
+            if (Theme.Lounge) Theme.Bar(g, Theme.Text, 43, 35, 26);
         }
     }
 
@@ -1431,7 +1511,7 @@ namespace CustomCrosshair
             if (Selected)
             {
                 Theme.FillRound(g, Color.FromArgb(30, 30, 35), r, 4);
-                using (SolidBrush b = new SolidBrush(Theme.Text)) g.FillRectangle(b, 0, 7, 3, Height - 14);
+                using (SolidBrush b = new SolidBrush(Theme.Accent)) g.FillRectangle(b, 0, 8, 3, Height - 16);
             }
             else if (Hover) Theme.FillRound(g, Theme.Hover, r, 4);
             Color c = Selected ? Theme.Text : Theme.Dim;
@@ -1452,12 +1532,21 @@ namespace CustomCrosshair
         {
             this.glyph = glyph; this.caption = caption; this.selected = selected; this.click = click;
             BackColor = Theme.Window; Height = 32; Cursor = Cursors.Hand;
-            Width = TextRenderer.MeasureText(caption.ToUpper(), Theme.HeavySmall).Width + 58;
+            Width = TextRenderer.MeasureText(Theme.Up(caption), Theme.Lounge ? Theme.HeavySmall : Theme.Bold).Width + (Theme.Lounge ? 58 : 50);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             RectangleF r = new RectangleF(0, 0, Width - 1, Height - 1);
+            if (!Theme.Lounge)
+            {
+                if (selected) Theme.FillRound(g, Theme.Selected, r, 7);
+                else if (Hover) Theme.FillRound(g, Theme.Hover, r, 7);
+                Color cc = selected ? Theme.Text : Theme.Dim;
+                Theme.Glyph(g, glyph, selected ? Theme.Accent : cc, new Rectangle(12, 0, 18, Height));
+                Theme.Label(g, caption, selected ? Theme.Bold : Theme.Normal, cc, new Rectangle(36, 0, Width - 40, Height), TextFormatFlags.Left);
+                return;
+            }
             if (selected || Hover)
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -1504,8 +1593,9 @@ namespace CustomCrosshair
         protected override void OnPaint(PaintEventArgs e)
         {
             RectangleF r = new RectangleF(0, 0, Width - 1, Height - 1);
-            Theme.FillRound(e.Graphics, Hover ? Color.FromArgb(245, 245, 248) : Color.FromArgb(220, 220, 226), r, 7);
-            Theme.Label(e.Graphics, caption, Theme.Bold, Color.FromArgb(20, 20, 24), new Rectangle(0, 0, Width, Height), TextFormatFlags.HorizontalCenter);
+            Color bg = Hover ? ControlPaint.Light(Theme.Accent, 0.4f) : Theme.Accent;
+            Theme.FillRound(e.Graphics, bg, r, 7);
+            Theme.Label(e.Graphics, caption, Theme.Bold, Theme.AccentText, new Rectangle(0, 0, Width, Height), TextFormatFlags.HorizontalCenter);
         }
         protected override void OnMouseClick(MouseEventArgs e) { if (e.Button == MouseButtons.Left) click(); base.OnMouseClick(e); }
     }
@@ -1607,6 +1697,12 @@ namespace CustomCrosshair
             Color.FromArgb(255, 140, 0)
         };
 
+        static readonly Color[] AccentPresets = new Color[] {
+            Color.FromArgb(225, 225, 230), Color.FromArgb(88, 101, 242), Color.FromArgb(155, 89, 230),
+            Color.FromArgb(40, 200, 120), Color.FromArgb(236, 72, 153), Color.FromArgb(245, 140, 40),
+            Color.FromArgb(230, 70, 70)
+        };
+
         public MenuForm(Settings settings, Overlay ov)
         {
             s = settings; overlay = ov;
@@ -1619,14 +1715,15 @@ namespace CustomCrosshair
             Text = "Custom Crosshair";
             Icon = AppIcon.MakeIcon(32);
             DoubleBuffered = true;
-            Opacity = 0.97;
+            Opacity = Math.Max(70, Math.Min(100, s.MenuOpacity)) / 100.0;
             Font = Theme.Normal;
 
             AddNav("X", "Crosshair", 0, 104);
             AddNav("\uE790", "Kleur", 1, 144);
             AddNav("\uE8FD", "Profielen", 2, 184);
             AddNav("\uE713", "Instellingen", 3, 256);
-            AddNav("\uE895", "Updates", 4, 296);
+            AddNav("\uE771", "Uiterlijk", 5, 296);
+            AddNav("\uE895", "Updates", 4, 336);
 
             CloseButton close = new CloseButton(delegate { Toggle(); });
             close.Location = new Point(ClientSize.Width - 46, 12);
@@ -1666,6 +1763,7 @@ namespace CustomCrosshair
             using (Pen p = new Pen(Theme.Border)) g.DrawLine(p, SideW, 0, SideW, H);
 
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            if (!Theme.Lounge) { PaintClean(g, W, H); return; }
             g.DrawImage(logo, 16, 18, 34, 34);
             Theme.Label(g, "CUSTOM", Theme.Heavy, Theme.Text, new Rectangle(56, 12, 132, 24), TextFormatFlags.Left);
             Theme.Label(g, "CROSSHAIR", Theme.Heavy, Theme.Text, new Rectangle(56, 32, 132, 24), TextFormatFlags.Left);
@@ -1699,6 +1797,34 @@ namespace CustomCrosshair
                         new Rectangle(x0 + 10, top + 8, right - x0 - 20, bot - top - 8), TextFormatFlags.HorizontalCenter);
         }
 
+        void PaintClean(Graphics g, int W, int H)
+        {
+            g.DrawImage(logo, 18, 20, 30, 30);
+            Theme.Label(g, "Custom Crosshair", Theme.Title, Theme.Text, new Rectangle(56, 16, 130, 22), TextFormatFlags.Left);
+            Theme.Label(g, Theme.KeyName(s.MenuKey) + " = menu", Theme.Tiny, Theme.Dim, new Rectangle(56, 37, 130, 16), TextFormatFlags.Left);
+
+            Theme.Label(g, "ALGEMEEN", Theme.Small, Theme.Faint, new Rectangle(22, 82, 150, 18), TextFormatFlags.Left);
+            Theme.Label(g, "OVERIG", Theme.Small, Theme.Faint, new Rectangle(22, 234, 150, 18), TextFormatFlags.Left);
+
+            using (Pen p = new Pen(Theme.Border)) g.DrawLine(p, 14, H - 72, SideW - 14, H - 72);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (SolidBrush b = new SolidBrush(Theme.Accent)) g.FillEllipse(b, 18, H - 56, 32, 32);
+            string uname = string.IsNullOrEmpty(s.UserName) ? "Speler" : s.UserName;
+            Theme.Label(g, uname.Substring(0, 1).ToUpper(), Theme.Bold, Theme.AccentText, new Rectangle(18, H - 56, 32, 32), TextFormatFlags.HorizontalCenter);
+            Theme.Label(g, uname, Theme.Bold, Theme.Text, new Rectangle(60, H - 58, 120, 20), TextFormatFlags.Left);
+            Theme.Label(g, s.ActiveProfile, Theme.Tiny, Theme.Dim, new Rectangle(60, H - 39, 120, 16), TextFormatFlags.Left);
+        }
+
+        public void ApplyTheme()
+        {
+            Theme.Apply(s.MenuTheme, s.Accent);
+            Opacity = Math.Max(70, Math.Min(100, s.MenuOpacity)) / 100.0;
+            foreach (NavItem n in navs) n.Invalidate();
+            BuildTabs();
+            BuildContent();
+            Invalidate(true);
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
@@ -1726,6 +1852,7 @@ namespace CustomCrosshair
             else if (page == 1) { names = new string[] { "Kleur" }; glyphs = new string[] { "\uE790" }; }
             else if (page == 2) { names = new string[] { "Profielen" }; glyphs = new string[] { "\uE8FD" }; }
             else if (page == 4) { names = new string[] { "Updates" }; glyphs = new string[] { "\uE895" }; }
+            else if (page == 5) { names = new string[] { "Uiterlijk" }; glyphs = new string[] { "\uE771" }; }
             else { names = new string[] { "Algemeen" }; glyphs = new string[] { "\uE713" }; }
             int x = SideW + 14;
             for (int i = 0; i < names.Length; i++)
@@ -1931,6 +2058,28 @@ namespace CustomCrosshair
                 codeInput = C.Add(new InputRow("Plak hier een code (BC-...)", delegate { UseCode(codeInput.Value); }));
                 C.Add(new ButtonRow("\uE896", "Code gebruiken", false, delegate { UseCode(codeInput.Value); }));
             }
+            else if (page == 5)
+            {
+                L = new Card("\uE771", "Menustijl", cw);
+                L.Add(new ThemeTiles(() => s.MenuTheme, v => { s.MenuTheme = v; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
+                L.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v =>
+                {
+                    s.MenuOpacity = v; s.Save();
+                    Opacity = v / 100.0;
+                }));
+
+                R = new Card("\uE790", "Accentkleur", cw);
+                R.Add(new InfoRow("De kleur van schakelaars, schuifjes, knoppen en het streepje bij de pagina waar je bent.", 32));
+                R.Add(new SwatchRow(AccentPresets, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
+                R.Add(new ColorRow("\uE790", "Eigen accentkleur", () => s.Accent, delegate
+                {
+                    using (ColorDialog cd = new ColorDialog())
+                    {
+                        cd.Color = s.Accent; cd.FullOpen = true;
+                        if (cd.ShowDialog(this) == DialogResult.OK) { s.Accent = cd.Color; s.Save(); BeginInvoke(new Action(ApplyTheme)); }
+                    }
+                }));
+            }
             else if (page == 4)
             {
                 L = new Card("\uE895", "Updates", cw);
@@ -2069,7 +2218,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.11";
+        public const string Version = "1.1.0";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -2382,6 +2531,8 @@ namespace CustomCrosshair
             try { Application.EnableVisualStyles(); } catch { }
 
             S = Settings.Load();
+
+            Theme.Apply(S.MenuTheme, S.Accent);
 
             // eerst verplicht updaten als er een nieuwe versie is
             string upUrl, upErr;
