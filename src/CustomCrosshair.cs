@@ -2957,6 +2957,7 @@ namespace CustomCrosshair
                 L = new Card("\uE895", "Updates", cw);
                 L.Add(new InfoRow("Klik hieronder om te kijken of er een update is.", 22));
                 L.Add(new PrimaryButton("Nu op updates controleren", delegate { Updater.Check(this, true); }));
+                L.Add(new ButtonRow("\uE946", "Wat is er nieuw in deze versie", false, delegate { BeginInvoke(new Action(ShowWhatsNew)); }));
 
                 R = new Card("\uE946", "Hoe werkt het", cw);
                 R.Add(new InfoRow("Updates zijn verplicht. Bij het opstarten en elk half uur kijkt de app of er een update is. Is die er, dan moet je eerst updaten voordat je verder kunt. De app werkt zichzelf bij en start opnieuw op. Je instellingen en profielen blijven bewaard. Zonder internet kun je de app gewoon gebruiken.", 110));
@@ -2996,6 +2997,7 @@ namespace CustomCrosshair
                 R.Add(new InfoRow("Menukleur", 18));
                 R.Add(new SwatchRow(AccentPresets, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                 R.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v => { s.MenuOpacity = v; s.Save(); Opacity = v / 100.0; }));
+                R.Add(new ButtonRow("\uE7BE", "Rondleiding opnieuw bekijken", false, delegate { BeginInvoke(new Action(StartTour)); }));
                 R.Add(new ButtonRow("\uE77B", "Naam wijzigen", false, delegate
                 {
                     using (NameForm nf = new NameForm(s.UserName))
@@ -3391,11 +3393,11 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.7.0";
+        public const string Version = "1.7.1";
         public static readonly string[] Notes = new string[] {
-            "Nieuw opstartscherm met het Hex-logo",
-            "Rondleiding voor nieuwe gebruikers",
-            "Dit venster: na elke update zie je wat er nieuw is" };
+            "Rondleiding opnieuw bekijken via Instellingen",
+            "Knop 'Wat is er nieuw' op de pagina Updates",
+            "Nieuw opstartscherm en rondleiding voor nieuwe gebruikers" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
