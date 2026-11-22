@@ -32,6 +32,7 @@ namespace CustomCrosshair
         public string MonitorName = "";
         public string UserName = "";
         public bool AutoUpdate = true;
+        public string TargetApp = "";
 
         public Settings Clone() { return (Settings)MemberwiseClone(); }
 
@@ -82,6 +83,7 @@ namespace CustomCrosshair
                 case "Style": if (ok) Style = Math.Max(0, Math.Min(MaxStyle, n)); break;
                 case "UserName": UserName = v; break;
                 case "AutoUpdate": AutoUpdate = v == "True"; break;
+                case "TargetApp": TargetApp = v; break;
                 case "Color": if (ok) Color = Color.FromArgb(n); break;
                 case "Length": if (ok) Length = n; break;
                 case "Thickness": if (ok) Thickness = n; break;
@@ -111,7 +113,7 @@ namespace CustomCrosshair
                 List<string> l = LookLines();
                 l.Add("Enabled=" + Enabled); l.Add("MenuKey=" + MenuKey);
                 l.Add("ShowMenuOnStart=" + ShowMenuOnStart); l.Add("StreamProof=" + StreamProof);
-                l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate);
+                l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -495,14 +497,17 @@ namespace CustomCrosshair
             Invalidate(new Rectangle(cx - 140, cy - 140, 280, 280));
         }
 
+        public bool AppAllowed = true;
+
         public void ApplySettings()
         {
             Rectangle target = Program.TargetScreen(s).Bounds;
             if (Bounds != target) Bounds = target;
             double op = Math.Max(10, Math.Min(100, s.Opacity)) / 100.0;
             if (Math.Abs(Opacity - op) > 0.001) Opacity = op;
-            if (s.Enabled && !Visible) Show();
-            if (!s.Enabled && Visible) Hide();
+            bool show = s.Enabled && AppAllowed;
+            if (show && !Visible) Show();
+            if (!show && Visible) Hide();
             Invalidate();
             KeepOnTop();
         }
@@ -968,6 +973,66 @@ namespace CustomCrosshair
             Theme.FillRound(e.Graphics, Color.FromArgb(14, 14, 17), r, 6);
             Theme.DrawRound(e.Graphics, Theme.Border, r, 6);
             Theme.Label(e.Graphics, get(), Mono, Color.FromArgb(120, 240, 170), new Rectangle(12, 0, Width - 24, Height), TextFormatFlags.Left);
+        }
+    }
+
+    public class AppRow : Row
+    {
+        Func<string> get; Action<string> set;
+        public AppRow(string glyph, string caption, Func<string> get, Action<string> set) : base(glyph, caption, 32)
+        { this.get = get; this.set = set; Cursor = Cursors.Hand; }
+        Rectangle Chip { get { return new Rectangle(Width - 150, 3, 150, Height - 6); } }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            PaintCaption(g, 0, 0, Height, Theme.Text, Width - 156);
+            Rectangle c = Chip;
+            Theme.FillRound(g, Hover ? Color.FromArgb(40, 40, 47) : Color.FromArgb(32, 32, 38), c, 6);
+            string v = get();
+            Theme.Label(g, string.IsNullOrEmpty(v) ? "Alle apps" : v, Theme.Normal, Theme.Text, new Rectangle(c.X + 12, c.Y, c.Width - 40, c.Height), TextFormatFlags.Left);
+            Rectangle arrow = new Rectangle(c.Right - 28, c.Y, 20, c.Height);
+            if (Theme.HasIcons) Theme.Glyph(g, "\uE70D", Theme.Dim, arrow);
+            else Theme.Label(g, "v", Theme.Normal, Theme.Dim, arrow, TextFormatFlags.HorizontalCenter);
+        }
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                ContextMenuStrip cms = new ContextMenuStrip();
+                cms.Font = Theme.Normal;
+                cms.Items.Add("Alle apps (altijd tonen)", null, delegate { set(""); Invalidate(); });
+                cms.Items.Add(new ToolStripSeparator());
+                List<string> seen = new List<string>();
+                List<string[]> apps = new List<string[]>();
+                int own = System.Diagnostics.Process.GetCurrentProcess().Id;
+                foreach (System.Diagnostics.Process pr in System.Diagnostics.Process.GetProcesses())
+                {
+                    try
+                    {
+                        if (pr.Id == own || pr.MainWindowHandle == IntPtr.Zero) continue;
+                        string title = pr.MainWindowTitle;
+                        if (string.IsNullOrEmpty(title)) continue;
+                        string name = pr.ProcessName;
+                        if (seen.Contains(name.ToLower())) continue;
+                        seen.Add(name.ToLower());
+                        if (title.Length > 40) title = title.Substring(0, 40) + "...";
+                        apps.Add(new string[] { name, title });
+                    }
+                    catch { }
+                }
+                apps.Sort((x, y) => string.Compare(x[0], y[0], StringComparison.OrdinalIgnoreCase));
+                foreach (string[] a in apps)
+                {
+                    string name = a[0];
+                    ToolStripItem it = cms.Items.Add(name + "   (" + a[1] + ")", null, delegate { set(name); Invalidate(); });
+                    if (string.Equals(name, get(), StringComparison.OrdinalIgnoreCase)) ((ToolStripMenuItem)it).Checked = true;
+                }
+                if (apps.Count == 0) { ToolStripItem none = cms.Items.Add("Geen apps gevonden"); none.Enabled = false; }
+                if (string.IsNullOrEmpty(get())) ((ToolStripMenuItem)cms.Items[0]).Checked = true;
+                Rectangle c = Chip;
+                cms.Show(this, new Point(c.X, c.Bottom + 2));
+            }
+            base.OnMouseClick(e);
         }
     }
 
@@ -1643,6 +1708,8 @@ namespace CustomCrosshair
                     s.MonitorName = screens[v].DeviceName;
                     Changed();
                 }));
+                L.Add(new AppRow("\uE7FC", "Alleen tonen in", () => s.TargetApp, v => { s.TargetApp = v; Program.ResetForeground(); Changed(); }));
+                L.Add(new InfoRow("Kies je game: de crosshair verdwijnt als je wegtabt. Start de game eerst, dan staat hij in de lijst.", 32));
                 L.Add(new KeyRow("\uE765", "Menu-toets", s.MenuKey, k => { s.MenuKey = k; Changed(); }));
                 L.Add(new ToggleRow("\uE80F", "Start met Windows", Program.StartupEnabled(), v => Program.SetStartup(v)));
                 L.Add(new ToggleRow("\uE7F4", "Menu tonen bij opstarten", s.ShowMenuOnStart, v => { s.ShowMenuOnStart = v; Changed(); }));
@@ -1754,7 +1821,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.6";
+        public const string Version = "1.0.7";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
@@ -1940,6 +2007,39 @@ namespace CustomCrosshair
             if (vk == S.MenuKey) menu.Toggle();
         }
 
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+        static IntPtr lastFg = new IntPtr(-1);
+        static uint lastPid = 0;
+        static string lastName = "";
+        static uint ownPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+
+        public static void ResetForeground() { lastFg = new IntPtr(-1); }
+
+        static void CheckForeground()
+        {
+            bool allowed = true;
+            if (!string.IsNullOrEmpty(S.TargetApp))
+            {
+                IntPtr fg = GetForegroundWindow();
+                if (fg != lastFg)
+                {
+                    lastFg = fg;
+                    uint pid = 0;
+                    GetWindowThreadProcessId(fg, out pid);
+                    lastPid = pid;
+                    try { lastName = pid == 0 ? "" : System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; }
+                    catch { lastName = ""; }
+                }
+                allowed = lastPid == ownPid || string.Equals(lastName, S.TargetApp, StringComparison.OrdinalIgnoreCase);
+            }
+            if (allowed != overlay.AppAllowed)
+            {
+                overlay.AppAllowed = allowed;
+                overlay.ApplySettings();
+            }
+        }
+
         public static Screen TargetScreen(Settings s)
         {
             if (!string.IsNullOrEmpty(s.MonitorName))
@@ -2007,6 +2107,11 @@ namespace CustomCrosshair
             overlay.Show();
             overlay.ApplySettings();
             ApplyStreamProof();
+
+            Timer fgTimer = new Timer();
+            fgTimer.Interval = 200;
+            fgTimer.Tick += delegate { CheckForeground(); };
+            fgTimer.Start();
 
             Timer rgbTimer = new Timer();
             rgbTimer.Interval = 33;
