@@ -37,7 +37,7 @@ namespace CustomCrosshair
 
         public static readonly string[] StyleNames = new string[] {
             "Kruis", "Punt", "Kruis + punt", "Cirkel", "Cirkel + punt", "T-vorm",
-            "X", "X + punt", "Vierkant", "Vierkant + punt", "Driehoek", "Pijl", "Hoeken" };
+            "X", "X + punt", "Vierkant", "Vierkant + punt", "Driehoek", "Pijl", "Hoeken", "Boog" };
         public static int MaxStyle { get { return StyleNames.Length - 1; } }
 
         public string ActiveProfile = "Standaard";
@@ -367,7 +367,8 @@ namespace CustomCrosshair
             int h = t / 2;
             int st = s.Style;
             bool cross = st == 0 || st == 2 || st == 5;
-            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9;
+            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13;
+            bool arc = st == 13;
             bool circle = st == 3 || st == 4;
             bool noTop = st == 5;
             bool xs = st == 6 || st == 7;
@@ -411,6 +412,20 @@ namespace CustomCrosshair
                     PointF[] pts = new PointF[] {
                         new PointF(cx - len, cy + gap + len), new PointF(cx, cy + gap), new PointF(cx + len, cy + gap + len) };
                     g.DrawLines(p, pts);
+                }
+                if (arc)
+                {
+                    int ly = cy + Math.Max(2, gap + 2);
+                    int ra = Math.Max(4, len);
+                    g.DrawLine(p, cx - ra - len, ly, cx - ra, ly);
+                    g.DrawLine(p, cx + ra, ly, cx + ra + len, ly);
+                    g.DrawArc(p, cx - ra, ly - ra, ra * 2, ra * 2, 0, 180);
+                    float er = t + 1 + grow;
+                    using (SolidBrush eb = new SolidBrush(grow > 0 ? color : Color.White))
+                    {
+                        g.FillEllipse(eb, cx - ra - len - er, ly - er, er * 2, er * 2);
+                        g.FillEllipse(eb, cx + ra + len - er, ly - er, er * 2, er * 2);
+                    }
                 }
                 if (corners)
                 {
@@ -1745,7 +1760,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.4";
+        public const string Version = "1.0.5";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
