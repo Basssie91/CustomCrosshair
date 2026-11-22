@@ -33,12 +33,31 @@ namespace CustomCrosshair
         public string UserName = "";
         public bool AutoUpdate = true;
         public string TargetApp = "";
+        public string ImageFile = "";
+        public int ImageScale = 100;
+        public string Pixels = DefaultPixels();
+        public int PixelSize = 2;
 
         public Settings Clone() { return (Settings)MemberwiseClone(); }
 
         public static readonly string[] StyleNames = new string[] {
             "Kruis", "Punt", "Kruis + punt", "Cirkel", "Cirkel + punt", "T-vorm",
-            "X", "X + punt", "Vierkant", "Vierkant + punt", "Driehoek", "Pijl", "Hoeken", "Boog" };
+            "X", "X + punt", "Vierkant", "Vierkant + punt", "Driehoek", "Pijl", "Hoeken", "Boog",
+            "Plaatje", "Getekend" };
+        public const int StyleImage = 14, StylePixels = 15, Grid = 25;
+
+        public static string DefaultPixels()
+        {
+            char[] a = new string('0', Grid * Grid).ToCharArray();
+            int c = Grid / 2;
+            a[c * Grid + c] = '1';
+            for (int i = 3; i <= 6; i++)
+            {
+                a[(c - i) * Grid + c] = '1'; a[(c + i) * Grid + c] = '1';
+                a[c * Grid + c - i] = '1'; a[c * Grid + c + i] = '1';
+            }
+            return new string(a);
+        }
         public static int MaxStyle { get { return StyleNames.Length - 1; } }
 
         public string ActiveProfile = "Standaard";
@@ -53,6 +72,7 @@ namespace CustomCrosshair
             Thickness = d.Thickness; Gap = d.Gap; DotSize = d.DotSize; Outline = d.Outline;
             Opacity = d.Opacity; OffsetX = d.OffsetX; OffsetY = d.OffsetY;
             Rgb = d.Rgb; RgbSpeed = d.RgbSpeed;
+            ImageScale = d.ImageScale; PixelSize = d.PixelSize;
         }
 
         public List<string> LookLines()
@@ -63,6 +83,8 @@ namespace CustomCrosshair
             l.Add("Outline=" + Outline); l.Add("Opacity=" + Opacity);
             l.Add("OffsetX=" + OffsetX); l.Add("OffsetY=" + OffsetY);
             l.Add("Rgb=" + Rgb); l.Add("RgbSpeed=" + RgbSpeed);
+            l.Add("ImageFile=" + ImageFile); l.Add("ImageScale=" + ImageScale);
+            l.Add("Pixels=" + Pixels); l.Add("PixelSize=" + PixelSize);
             return l;
         }
 
@@ -84,6 +106,12 @@ namespace CustomCrosshair
                 case "UserName": UserName = v; break;
                 case "AutoUpdate": AutoUpdate = v == "True"; break;
                 case "TargetApp": TargetApp = v; break;
+                case "ImageFile": ImageFile = v; break;
+                case "ImageScale": if (ok) ImageScale = Math.Max(10, Math.Min(400, n)); break;
+                case "PixelSize": if (ok) PixelSize = Math.Max(1, Math.Min(6, n)); break;
+                case "Pixels":
+                    if (v.Length == Grid * Grid && v.Trim('0', '1').Length == 0) Pixels = v;
+                    break;
                 case "Color": if (ok) Color = Color.FromArgb(n); break;
                 case "Length": if (ok) Length = n; break;
                 case "Thickness": if (ok) Thickness = n; break;
@@ -210,6 +238,16 @@ namespace CustomCrosshair
             b[11] = (byte)(Clamp(s.OffsetX, -60, 60) + 128);
             b[12] = (byte)(Clamp(s.OffsetY, -60, 60) + 128);
             b[13] = (byte)Clamp(s.RgbSpeed, 1, 10);
+            if (s.Style == Settings.StylePixels)
+            {
+                byte[] big = new byte[15 + 1 + 79];
+                Array.Copy(b, big, 15);
+                big[0] = 2;
+                big[15] = (byte)Clamp(s.PixelSize, 1, 6);
+                for (int i = 0; i < Settings.Grid * Settings.Grid && i < s.Pixels.Length; i++)
+                    if (s.Pixels[i] == '1') big[16 + i / 8] |= (byte)(1 << (i % 8));
+                b = big;
+            }
             b[14] = Check(b);
             return "BC-" + Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         }
@@ -224,7 +262,8 @@ namespace CustomCrosshair
                 string b64 = code.Substring(3).Replace('-', '+').Replace('_', '/');
                 while (b64.Length % 4 != 0) b64 += "=";
                 byte[] b = Convert.FromBase64String(b64);
-                if (b.Length < 15 || b[0] != 1 || b[14] != Check(b)) return false;
+                if (b.Length < 15 || (b[0] != 1 && b[0] != 2) || b[14] != Check(b)) return false;
+                if (b[0] == 2 && b.Length < 15 + 1 + 79) return false;
                 s.Style = Clamp(b[1], 0, Settings.MaxStyle);
                 s.Color = Color.FromArgb(b[2], b[3], b[4]);
                 s.Length = Clamp(b[5], 1, 40);
@@ -237,6 +276,13 @@ namespace CustomCrosshair
                 s.OffsetX = Clamp(b[11] - 128, -60, 60);
                 s.OffsetY = Clamp(b[12] - 128, -60, 60);
                 s.RgbSpeed = Clamp(b[13], 1, 10);
+                if (b[0] == 2)
+                {
+                    s.PixelSize = Clamp(b[15], 1, 6);
+                    char[] px = new char[Settings.Grid * Settings.Grid];
+                    for (int i = 0; i < px.Length; i++) px[i] = (b[16 + i / 8] & (1 << (i % 8))) != 0 ? '1' : '0';
+                    s.Pixels = new string(px);
+                }
                 return true;
             }
             catch { return false; }
@@ -339,9 +385,93 @@ namespace CustomCrosshair
             }
         }
 
+        static Bitmap cachedImg; static string cachedName;
+
+        public static string ImageDir { get { return Path.Combine(Settings.Dir, "plaatjes"); } }
+
+        static Bitmap Prepare(Image src)
+        {
+            Bitmap tmp = new Bitmap(src);
+            Bitmap b = new Bitmap(tmp.Width, tmp.Height, PixelFormat.Format32bppArgb);
+            for (int y = 0; y < tmp.Height; y++)
+                for (int x = 0; x < tmp.Width; x++)
+                {
+                    Color c = tmp.GetPixel(x, y);
+                    if (c.A >= 128)
+                    {
+                        if (c.R == 255 && c.G == 0 && c.B == 255) c = Color.FromArgb(254, 0, 255);
+                        b.SetPixel(x, y, Color.FromArgb(255, c.R, c.G, c.B));
+                    }
+                    else b.SetPixel(x, y, Color.Transparent);
+                }
+            tmp.Dispose();
+            return b;
+        }
+
+        public static string ImportImage(string path)
+        {
+            try
+            {
+                Directory.CreateDirectory(ImageDir);
+                Bitmap bmp;
+                using (FileStream fs = File.OpenRead(path))
+                using (Image im = Image.FromStream(fs))
+                {
+                    int w = im.Width, h = im.Height;
+                    int max = Math.Max(w, h);
+                    if (max > 256) { w = Math.Max(1, w * 256 / max); h = Math.Max(1, h * 256 / max); }
+                    bmp = new Bitmap(im, w, h);
+                }
+                string name = Path.GetFileNameWithoutExtension(path);
+                foreach (char c in Path.GetInvalidFileNameChars()) name = name.Replace(c.ToString(), "");
+                if (name.Length == 0) name = "plaatje";
+                name = name + ".png";
+                bmp.Save(Path.Combine(ImageDir, name), ImageFormat.Png);
+                bmp.Dispose();
+                cachedName = null;
+                return name;
+            }
+            catch { return null; }
+        }
+
+        static Bitmap GetImage(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            if (name == cachedName) return cachedImg;
+            cachedName = name;
+            if (cachedImg != null) { cachedImg.Dispose(); cachedImg = null; }
+            try
+            {
+                string p = Path.Combine(ImageDir, name);
+                if (File.Exists(p))
+                    using (FileStream fs = File.OpenRead(p))
+                    using (Image im = Image.FromStream(fs))
+                        cachedImg = Prepare(im);
+            }
+            catch { cachedImg = null; }
+            return cachedImg;
+        }
+
         public static void Draw(Graphics g, Settings s, int cx, int cy)
         {
             g.SmoothingMode = SmoothingMode.None;
+            if (s.Style == Settings.StyleImage)
+            {
+                Bitmap img = GetImage(s.ImageFile);
+                if (img == null)
+                {
+                    using (SolidBrush fb = new SolidBrush(Color.White)) g.FillRectangle(fb, cx - 1, cy - 1, 3, 3);
+                    return;
+                }
+                float sc = Math.Max(10, s.ImageScale) / 100f;
+                float w = img.Width * sc, h = img.Height * sc;
+                GraphicsState gs = g.Save();
+                g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                g.PixelOffsetMode = PixelOffsetMode.Half;
+                g.DrawImage(img, new RectangleF((float)Math.Round(cx - w / 2), (float)Math.Round(cy - h / 2), w, h));
+                g.Restore(gs);
+                return;
+            }
             Color c = ColorFor(s);
             if (c.R == 255 && c.G == 0 && c.B == 255) c = Color.FromArgb(254, 0, 255);
             c = Color.FromArgb(255, c.R, c.G, c.B);
@@ -371,6 +501,7 @@ namespace CustomCrosshair
             bool cross = st == 0 || st == 2 || st == 5;
             bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13;
             bool arc = st == 13;
+            bool pix = st == Settings.StylePixels;
             bool circle = st == 3 || st == 4;
             bool noTop = st == 5;
             bool xs = st == 6 || st == 7;
@@ -383,6 +514,13 @@ namespace CustomCrosshair
 
             using (SolidBrush b = new SolidBrush(color))
             {
+                if (pix && s.Pixels != null)
+                {
+                    int N = Settings.Grid, half = N / 2, ps = Math.Max(1, s.PixelSize);
+                    for (int i = 0; i < N * N && i < s.Pixels.Length; i++)
+                        if (s.Pixels[i] == '1')
+                            Box(g, b, cx + (i % N - half) * ps - ps / 2, cy + (i / N - half) * ps - ps / 2, ps, ps, grow);
+                }
                 if (cross)
                 {
                     Box(g, b, cx + gap, cy - h, len, t, grow);
@@ -1036,6 +1174,66 @@ namespace CustomCrosshair
         }
     }
 
+    public class PixelEditor : Ctl
+    {
+        Settings s; Action changed; bool painting; char brush;
+        const int N = Settings.Grid;
+        public PixelEditor(Settings s, Action changed) { this.s = s; this.changed = changed; Height = 250; Cursor = Cursors.Cross; }
+        int Cell { get { return Math.Max(4, Math.Min(Width, 300) / N); } }
+        int Ox { get { return (Width - Cell * N) / 2; } }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            int h = Cell * N + 1;
+            if (Height != h) Height = h;
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            int c = Cell, ox = Ox;
+            using (SolidBrush bg = new SolidBrush(Color.FromArgb(14, 14, 17))) g.FillRectangle(bg, ox, 0, c * N, c * N);
+            int mid = N / 2;
+            using (SolidBrush cb = new SolidBrush(Color.FromArgb(30, 30, 36))) g.FillRectangle(cb, ox + mid * c, mid * c, c, c);
+            using (SolidBrush fb = new SolidBrush(Crosshair.ColorFor(s)))
+                for (int i = 0; i < N * N && i < s.Pixels.Length; i++)
+                    if (s.Pixels[i] == '1') g.FillRectangle(fb, ox + (i % N) * c + 1, (i / N) * c + 1, c - 1, c - 1);
+            using (Pen p = new Pen(Color.FromArgb(34, 34, 40)))
+                for (int i = 0; i <= N; i++)
+                {
+                    g.DrawLine(p, ox + i * c, 0, ox + i * c, N * c);
+                    g.DrawLine(p, ox, i * c, ox + N * c, i * c);
+                }
+            using (Pen mp = new Pen(Color.FromArgb(90, 90, 100)))
+                g.DrawRectangle(mp, ox + mid * c, mid * c, c, c);
+        }
+        void PaintAt(int mx, int my)
+        {
+            int c = Cell;
+            int x = (mx - Ox) / c, y = my / c;
+            if (mx < Ox || x < 0 || y < 0 || x >= N || y >= N) return;
+            char[] a = s.Pixels.ToCharArray();
+            int i = y * N + x;
+            if (a[i] == brush) return;
+            a[i] = brush;
+            s.Pixels = new string(a);
+            s.Style = Settings.StylePixels;
+            Invalidate();
+            changed();
+        }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left || e.Button == MouseButtons.Right)
+            {
+                painting = true; Capture = true;
+                brush = e.Button == MouseButtons.Left ? '1' : '0';
+                PaintAt(e.X, e.Y);
+            }
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseMove(MouseEventArgs e) { if (painting) PaintAt(e.X, e.Y); base.OnMouseMove(e); }
+        protected override void OnMouseUp(MouseEventArgs e) { painting = false; Capture = false; base.OnMouseUp(e); }
+    }
+
     public class KeyRow : Row
     {
         int vk; bool capturing; Action<int> cb;
@@ -1515,7 +1713,7 @@ namespace CustomCrosshair
             foreach (Control c in tabCtls) c.Dispose();
             tabCtls.Clear();
             string[] names, glyphs;
-            if (page == 0) { names = new string[] { "Vorm", "Positie" }; glyphs = new string[] { "\uE8B3", "\uE8AB" }; }
+            if (page == 0) { names = new string[] { "Vorm", "Positie", "Eigen" }; glyphs = new string[] { "\uE8B3", "\uE8AB", "\uE70F" }; }
             else if (page == 1) { names = new string[] { "Kleur" }; glyphs = new string[] { "\uE790" }; }
             else if (page == 2) { names = new string[] { "Profielen" }; glyphs = new string[] { "\uE8FD" }; }
             else if (page == 4) { names = new string[] { "Updates" }; glyphs = new string[] { "\uE895" }; }
@@ -1549,7 +1747,13 @@ namespace CustomCrosshair
 
         void CopyCode()
         {
-            try { Clipboard.SetText(ShareCode.Make(s)); MessageBox.Show(this, "Je crosshair-code is gekopieerd. Plak hem in Discord of waar je maar wilt.", "Custom Crosshair"); }
+            try
+            {
+                Clipboard.SetText(ShareCode.Make(s));
+                MessageBox.Show(this, s.Style == Settings.StyleImage
+                    ? "Je code is gekopieerd. Let op: een eigen plaatje past niet in een code, je vriend moet het plaatje zelf ook kiezen."
+                    : "Je crosshair-code is gekopieerd. Plak hem in Discord of waar je maar wilt.", "Custom Crosshair");
+            }
             catch { MessageBox.Show(this, "Kopieren lukte niet, probeer het nog eens.", "Custom Crosshair"); }
         }
 
@@ -1609,7 +1813,7 @@ namespace CustomCrosshair
                 R.Add(new SliderRow("\uE73F", "Afstand tot midden", 0, 30, s.Gap, v => v + " px", v => { s.Gap = v; Changed(); }));
                 R.Add(new SliderRow("\uE71E", "Puntgrootte", 1, 12, s.DotSize, v => v + " px", v => { s.DotSize = v; Changed(); }));
             }
-            else if (page == 0)
+            else if (page == 0 && tab == 1)
             {
                 L = new Card("\uE8AB", "Positie", cw);
                 L.Add(new SliderRow("\uE8AB", "Links / rechts", -60, 60, s.OffsetX, v => v + " px", v => { s.OffsetX = v; Changed(); }));
@@ -1617,6 +1821,42 @@ namespace CustomCrosshair
                 L.Add(new ButtonRow("\uE72C", "Terug naar het midden", false, delegate { s.OffsetX = 0; s.OffsetY = 0; Changed(); Rebuild(); }));
 
                 R = new Card("\uE7B3", "Voorbeeld", cw);
+                R.Add(new PreviewBox(s));
+            }
+            else if (page == 0)
+            {
+                L = new Card("\uE70F", "Zelf tekenen", cw);
+                L.Add(new InfoRow("Linkermuis = tekenen, rechtermuis = gummen. Het gemarkeerde vakje is het midden van je scherm.", 32));
+                PixelEditor editor = L.Add(new PixelEditor(s, delegate { Changed(); }));
+                L.Add(new SliderRow("\uE740", "Pixelgrootte", 1, 6, s.PixelSize, v => v + "x", v => { s.PixelSize = v; Changed(); }));
+                L.Add(new ButtonRow("\uE74D", "Alles wissen", false, delegate
+                {
+                    s.Pixels = new string('0', Settings.Grid * Settings.Grid);
+                    s.Style = Settings.StylePixels;
+                    Changed();
+                    editor.Invalidate();
+                }));
+
+                R = new Card("\uE91B", "Eigen plaatje", cw);
+                R.Add(new InfoRow("Kies een PNG met een doorzichtige achtergrond. Kleine plaatjes (bijv. 32x32) werken het best.", 32));
+                R.Add(new ButtonRow("\uE8E5", string.IsNullOrEmpty(s.ImageFile) ? "PNG kiezen..." : "Ander plaatje kiezen (nu: " + s.ImageFile + ")", false, delegate
+                {
+                    using (OpenFileDialog ofd = new OpenFileDialog())
+                    {
+                        ofd.Filter = "PNG-plaatjes|*.png";
+                        ofd.Title = "Kies je crosshair-plaatje";
+                        if (ofd.ShowDialog(this) == DialogResult.OK)
+                        {
+                            string name = Crosshair.ImportImage(ofd.FileName);
+                            if (name == null) { MessageBox.Show(this, "Dit plaatje kon niet worden geladen.", "Custom Crosshair"); return; }
+                            s.ImageFile = name;
+                            s.Style = Settings.StyleImage;
+                            Changed();
+                            Rebuild();
+                        }
+                    }
+                }));
+                R.Add(new SliderRow("\uE740", "Grootte plaatje", 10, 400, s.ImageScale, v => v + "%", v => { s.ImageScale = v; Changed(); }));
                 R.Add(new PreviewBox(s));
             }
             else if (page == 1)
@@ -1821,7 +2061,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.7";
+        public const string Version = "1.0.8";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
