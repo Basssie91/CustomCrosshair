@@ -1934,12 +1934,11 @@ namespace CustomCrosshair
             else if (page == 4)
             {
                 L = new Card("\uE895", "Updates", cw);
-                L.Add(new InfoRow("Klik hieronder om te kijken of er een update is. Is die er, dan wordt hij meteen geinstalleerd.", 36));
+                L.Add(new InfoRow("Klik hieronder om te kijken of er een update is.", 22));
                 L.Add(new PrimaryButton("Nu op updates controleren", delegate { Updater.Check(this, true); }));
-                L.Add(new ToggleRow("\uE895", "Automatisch controleren bij opstarten", s.AutoUpdate, v => { s.AutoUpdate = v; Changed(); }));
 
                 R = new Card("\uE946", "Hoe werkt het", cw);
-                R.Add(new InfoRow("Bij het opstarten kijkt de app op GitHub of er een update is. Zo ja, dan vraagt hij of je wilt updaten. Klik op Ja en de app werkt zichzelf bij en start opnieuw op. Je instellingen en profielen blijven bewaard.", 96));
+                R.Add(new InfoRow("Updates zijn verplicht. Bij het opstarten en elk half uur kijkt de app of er een update is. Is die er, dan moet je eerst updaten voordat je verder kunt. De app werkt zichzelf bij en start opnieuw op. Je instellingen en profielen blijven bewaard. Zonder internet kun je de app gewoon gebruiken.", 110));
             }
             else
             {
@@ -2070,57 +2069,38 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.10";
+        public const string Version = "1.0.11";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
+        static bool forcing = false;
 
-        public static void Check(Control ui, bool manual)
+        static string Get(string url)
         {
-            if (busy) return;
-            busy = true;
-            System.Threading.Thread th = new System.Threading.Thread(delegate()
-            {
-                string tag = null, url = null, error = null;
-                try
-                {
-                    System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
-                    using (System.Net.WebClient wc = new System.Net.WebClient())
-                    {
-                        wc.Headers.Add("User-Agent", "CustomCrosshair");
-                        string json = wc.DownloadString("https://api.github.com/repos/" + Repo + "/releases/latest");
-                        System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9.]+)\"");
-                        if (m.Success) tag = m.Groups[1].Value;
-                        System.Text.RegularExpressions.Match u = System.Text.RegularExpressions.Regex.Match(json,
-                            "\"browser_download_url\"\\s*:\\s*\"(https://github\\.com/" + Repo.Replace("/", "/") + "/releases/download/[^\"]+?\\.exe)\"");
-                        if (u.Success) url = u.Groups[1].Value;
-                    }
-                }
-                catch (Exception ex) { error = ex.Message; }
+            System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
+            System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
+            req.UserAgent = "CustomCrosshair";
+            req.Timeout = 6000;
+            req.ReadWriteTimeout = 6000;
+            using (System.Net.WebResponse r = req.GetResponse())
+            using (StreamReader sr = new StreamReader(r.GetResponseStream()))
+                return sr.ReadToEnd();
+        }
 
-                try
-                {
-                    ui.BeginInvoke(new Action(delegate
-                    {
-                        busy = false;
-                        if (error != null || tag == null || url == null)
-                        {
-                            if (manual) MessageBox.Show("Kon niet controleren op updates.\n" + (error ?? "Geen release met een .exe gevonden."), "Custom Crosshair");
-                            return;
-                        }
-                        if (!IsNewer(tag, Version))
-                        {
-                            if (manual) MessageBox.Show("Je app is up-to-date.", "Custom Crosshair");
-                            return;
-                        }
-                        if (MessageBox.Show("Er is een update voor Custom Crosshair.\n\nNu updaten?",
-                                "Custom Crosshair - update", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-                            Install(ui, url);
-                    }));
-                }
-                catch { busy = false; }
-            });
-            th.IsBackground = true;
-            th.Start();
+        // true = er is een nieuwere versie; url = download van de .exe
+        public static bool UpdateAvailable(out string url, out string error)
+        {
+            url = null; error = null;
+            try
+            {
+                string json = Get("https://api.github.com/repos/" + Repo + "/releases/latest");
+                System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9.]+)\"");
+                System.Text.RegularExpressions.Match u = System.Text.RegularExpressions.Regex.Match(json,
+                    "\"browser_download_url\"\\s*:\\s*\"(https://github\\.com/" + Repo + "/releases/download/[^\"]+?\\.exe)\"");
+                if (!m.Success || !u.Success) { error = "Geen update gevonden op GitHub."; return false; }
+                url = u.Groups[1].Value;
+                return IsNewer(m.Groups[1].Value, Version);
+            }
+            catch (Exception ex) { error = ex.Message; return false; }
         }
 
         static bool IsNewer(string a, string b)
@@ -2128,51 +2108,98 @@ namespace CustomCrosshair
             try { return new System.Version(a) > new System.Version(b); } catch { return false; }
         }
 
-        static void Install(Control ui, string url)
+        // Verplichte update: alleen updaten of afsluiten. Komt nooit terug.
+        public static void ForceUpdate(string url)
         {
+            if (forcing) return;
+            forcing = true;
+            DialogResult r = MessageBox.Show(
+                "Er is een update voor Custom Crosshair.\n\nJe moet eerst updaten voordat je de app weer kunt gebruiken.\n\nOK = nu updaten\nAnnuleren = afsluiten",
+                "Custom Crosshair - update nodig", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
+            if (r == DialogResult.OK) Install(url);
+            Program.ExitNow();
+        }
+
+        static void Install(string url)
+        {
+            Form wait = new Form();
+            wait.FormBorderStyle = FormBorderStyle.None;
+            wait.StartPosition = FormStartPosition.CenterScreen;
+            wait.Size = new Size(300, 70);
+            wait.BackColor = Theme.Window;
+            wait.TopMost = true;
+            wait.ShowInTaskbar = false;
+            Label l = new Label();
+            l.Text = "Bezig met updaten...";
+            l.ForeColor = Theme.Text;
+            l.Font = Theme.HeavySmall;
+            l.Dock = DockStyle.Fill;
+            l.TextAlign = ContentAlignment.MiddleCenter;
+            wait.Controls.Add(l);
+            wait.Show();
+            wait.Refresh();
+
             string tmp = Path.Combine(Path.GetTempPath(), "CustomCrosshair_nieuw.exe");
             string bat = Path.Combine(Path.GetTempPath(), "CustomCrosshair_update.bat");
             string current = Application.ExecutablePath;
+            try
+            {
+                System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
+                using (System.Net.WebClient wc = new System.Net.WebClient())
+                {
+                    wc.Headers.Add("User-Agent", "CustomCrosshair");
+                    wc.DownloadFile(url, tmp);
+                }
+                if (new FileInfo(tmp).Length < 10000) throw new Exception("De download is mislukt.");
+                File.WriteAllText(bat,
+                    "@echo off\r\n" +
+                    "set n=0\r\n" +
+                    "timeout /t 2 /nobreak >nul\r\n" +
+                    ":retry\r\n" +
+                    "set /a n+=1\r\n" +
+                    "copy /y \"" + tmp + "\" \"" + current + "\" >nul 2>&1 && goto ok\r\n" +
+                    "if %n% gtr 15 goto end\r\n" +
+                    "timeout /t 1 /nobreak >nul\r\n" +
+                    "goto retry\r\n" +
+                    ":ok\r\n" +
+                    "start \"\" \"" + current + "\"\r\n" +
+                    ":end\r\n" +
+                    "del \"" + tmp + "\" >nul 2>&1\r\n" +
+                    "del \"%~f0\" >nul 2>&1\r\n", System.Text.Encoding.Default);
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c \"" + bat + "\"");
+                psi.CreateNoWindow = true;
+                psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                psi.UseShellExecute = false;
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                wait.Close();
+                MessageBox.Show("Updaten is mislukt:\n" + ex.Message + "\n\nDe app wordt afgesloten. Probeer het later opnieuw.", "Custom Crosshair");
+            }
+        }
+
+        // Controle op de achtergrond (bij de knop en elk half uur)
+        public static void Check(Control ui, bool manual)
+        {
+            if (busy || forcing) return;
+            busy = true;
             System.Threading.Thread th = new System.Threading.Thread(delegate()
             {
-                string error = null;
+                string url, error;
+                bool available = UpdateAvailable(out url, out error);
                 try
                 {
-                    System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
-                    using (System.Net.WebClient wc = new System.Net.WebClient())
+                    ui.BeginInvoke(new Action(delegate
                     {
-                        wc.Headers.Add("User-Agent", "CustomCrosshair");
-                        wc.DownloadFile(url, tmp);
-                    }
-                    if (new FileInfo(tmp).Length < 10000) throw new Exception("Download is mislukt.");
-                    File.WriteAllText(bat,
-                        "@echo off\r\n" +
-                        "set n=0\r\n" +
-                        "timeout /t 2 /nobreak >nul\r\n" +
-                        ":retry\r\n" +
-                        "set /a n+=1\r\n" +
-                        "copy /y \"" + tmp + "\" \"" + current + "\" >nul 2>&1 && goto ok\r\n" +
-                        "if %n% gtr 15 goto end\r\n" +
-                        "timeout /t 1 /nobreak >nul\r\n" +
-                        "goto retry\r\n" +
-                        ":ok\r\n" +
-                        "start \"\" \"" + current + "\"\r\n" +
-                        ":end\r\n" +
-                        "del \"" + tmp + "\" >nul 2>&1\r\n" +
-                        "del \"%~f0\" >nul 2>&1\r\n", System.Text.Encoding.Default);
+                        busy = false;
+                        if (available) { Program.HideForUpdate(); ForceUpdate(url); return; }
+                        if (!manual) return;
+                        if (error != null) MessageBox.Show("Kon niet controleren op updates.\n" + error, "Custom Crosshair");
+                        else MessageBox.Show("Je app is up-to-date.", "Custom Crosshair");
+                    }));
                 }
-                catch (Exception ex) { error = ex.Message; }
-
-                ui.BeginInvoke(new Action(delegate
-                {
-                    if (error != null) { MessageBox.Show("Updaten is mislukt:\n" + error, "Custom Crosshair"); return; }
-                    System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c \"" + bat + "\"");
-                    psi.CreateNoWindow = true;
-                    psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
-                    psi.UseShellExecute = false;
-                    System.Diagnostics.Process.Start(psi);
-                    Program.Quit();
-                }));
+                catch { busy = false; }
             });
             th.IsBackground = true;
             th.Start();
@@ -2307,6 +2334,24 @@ namespace CustomCrosshair
             menu.RefreshAll();
         }
 
+        public static void HideForUpdate()
+        {
+            try
+            {
+                if (overlay != null) overlay.Hide();
+                if (menu != null) menu.Hide();
+            }
+            catch { }
+        }
+
+        public static void ExitNow()
+        {
+            Quitting = true;
+            try { KeyHook.Stop(); } catch { }
+            try { if (tray != null) { tray.Visible = false; tray.Dispose(); } } catch { }
+            Environment.Exit(0);
+        }
+
         public static void Quit()
         {
             Quitting = true;
@@ -2337,6 +2382,10 @@ namespace CustomCrosshair
             try { Application.EnableVisualStyles(); } catch { }
 
             S = Settings.Load();
+
+            // eerst verplicht updaten als er een nieuwe versie is
+            string upUrl, upErr;
+            if (Updater.UpdateAvailable(out upUrl, out upErr)) { Updater.ForceUpdate(upUrl); return; }
             if (string.IsNullOrEmpty(S.UserName))
             {
                 using (NameForm nf = new NameForm(""))
@@ -2411,13 +2460,10 @@ namespace CustomCrosshair
             KeyHook.Start();
 
             if (S.ShowMenuOnStart) menu.Toggle();
-            if (S.AutoUpdate)
-            {
-                Timer upd = new Timer();
-                upd.Interval = 4000;
-                upd.Tick += delegate { upd.Stop(); Updater.Check(overlay, false); };
-                upd.Start();
-            }
+            Timer upd = new Timer();
+            upd.Interval = 30 * 60 * 1000;
+            upd.Tick += delegate { Updater.Check(overlay, false); };
+            upd.Start();
 
             Application.Run(new ApplicationContext());
             KeyHook.Stop();
