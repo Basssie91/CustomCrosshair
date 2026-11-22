@@ -420,12 +420,6 @@ namespace CustomCrosshair
                     g.DrawLine(p, cx - ra - len, ly, cx - ra, ly);
                     g.DrawLine(p, cx + ra, ly, cx + ra + len, ly);
                     g.DrawArc(p, cx - ra, ly - ra, ra * 2, ra * 2, 0, 180);
-                    float er = t + 1 + grow;
-                    using (SolidBrush eb = new SolidBrush(grow > 0 ? color : Color.White))
-                    {
-                        g.FillEllipse(eb, cx - ra - len - er, ly - er, er * 2, er * 2);
-                        g.FillEllipse(eb, cx + ra + len - er, ly - er, er * 2, er * 2);
-                    }
                 }
                 if (corners)
                 {
@@ -1760,7 +1754,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.5";
+        public const string Version = "1.0.6";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
