@@ -460,6 +460,23 @@ namespace CustomCrosshair
             return cachedImg;
         }
 
+        // Hoe groot het overlay-venster moet zijn (klein = minder werk voor Windows)
+        public static int NeededSize(Settings s)
+        {
+            int size = 400;
+            if (s.Style == Settings.StyleImage)
+            {
+                Bitmap img = GetImage(s.ImageFile);
+                if (img != null)
+                {
+                    int need = (int)(Math.Max(img.Width, img.Height) * Math.Max(10, s.ImageScale) / 100f) + 160;
+                    size = Math.Max(size, need);
+                }
+            }
+            if (size % 2 == 1) size++;
+            return size;
+        }
+
         public static void Draw(Graphics g, Settings s, int cx, int cy)
         {
             g.SmoothingMode = SmoothingMode.None;
@@ -637,12 +654,12 @@ namespace CustomCrosshair
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            Bounds = Program.TargetScreen(s).Bounds;
+            Bounds = new Rectangle(0, 0, 400, 400);
             BackColor = Key;
             TransparencyKey = Key;
             DoubleBuffered = true;
             Timer t = new Timer();
-            t.Interval = 1000;
+            t.Interval = 2500;
             t.Tick += delegate { KeepOnTop(); };
             t.Start();
         }
@@ -662,21 +679,22 @@ namespace CustomCrosshair
         void KeepOnTop()
         {
             if (Visible && IsHandleCreated)
-                SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
+                SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0200 | 0x0400);
         }
 
         public void InvalidateCrosshair()
         {
             if (!Visible) return;
-            int cx = ClientSize.Width / 2 + s.OffsetX, cy = ClientSize.Height / 2 + s.OffsetY;
-            Invalidate(new Rectangle(cx - 140, cy - 140, 280, 280));
+            Invalidate();
         }
 
         public bool AppAllowed = true;
 
         public void ApplySettings()
         {
-            Rectangle target = Program.TargetScreen(s).Bounds;
+            Rectangle scr = Program.TargetScreen(s).Bounds;
+            int size = Crosshair.NeededSize(s);
+            Rectangle target = new Rectangle(scr.X + scr.Width / 2 - size / 2, scr.Y + scr.Height / 2 - size / 2, size, size);
             if (Bounds != target) Bounds = target;
             double op = Math.Max(10, Math.Min(100, s.Opacity)) / 100.0;
             if (Math.Abs(Opacity - op) > 0.001) Opacity = op;
@@ -1220,6 +1238,7 @@ namespace CustomCrosshair
                 List<string[]> apps = new List<string[]>();
                 int own = System.Diagnostics.Process.GetCurrentProcess().Id;
                 foreach (System.Diagnostics.Process pr in System.Diagnostics.Process.GetProcesses())
+                using (pr)
                 {
                     try
                     {
@@ -1244,6 +1263,7 @@ namespace CustomCrosshair
                 if (apps.Count == 0) { ToolStripItem none = cms.Items.Add("Geen apps gevonden"); none.Enabled = false; }
                 if (string.IsNullOrEmpty(get())) ((ToolStripMenuItem)cms.Items[0]).Checked = true;
                 Rectangle c = Chip;
+                cms.Closed += delegate { BeginInvoke(new Action(cms.Dispose)); };
                 cms.Show(this, new Point(c.X, c.Bottom + 2));
             }
             base.OnMouseClick(e);
@@ -2408,8 +2428,35 @@ namespace CustomCrosshair
         static int lastDown = -1;
         public static Action<int> OnKeyDown;
 
-        public static void Start() { hook = SetWindowsHookEx(13, proc, GetModuleHandle(null), 0); }
-        public static void Stop() { if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook); hook = IntPtr.Zero; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public int ptX; public int ptY; }
+        [DllImport("user32.dll")] static extern int GetMessage(out MSG m, IntPtr h, uint min, uint max);
+        [DllImport("user32.dll")] static extern bool PostThreadMessage(uint id, uint msg, IntPtr w, IntPtr l);
+        [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+        static uint hookThread = 0;
+
+        // De hook draait op een eigen draad, zodat toetsaanslagen nooit wachten op het menu.
+        public static void Start()
+        {
+            System.Threading.Thread th = new System.Threading.Thread(delegate()
+            {
+                hookThread = GetCurrentThreadId();
+                hook = SetWindowsHookEx(13, proc, GetModuleHandle(null), 0);
+                MSG m;
+                while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { }
+                if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
+                hook = IntPtr.Zero;
+            });
+            th.IsBackground = true;
+            th.Priority = System.Threading.ThreadPriority.AboveNormal;
+            th.Start();
+        }
+
+        public static void Stop()
+        {
+            if (hookThread != 0) PostThreadMessage(hookThread, 0x0012, IntPtr.Zero, IntPtr.Zero);
+            hookThread = 0;
+        }
 
         static IntPtr Callback(int nCode, IntPtr wParam, IntPtr lParam)
         {
@@ -2437,7 +2484,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.2.1";
+        public const string Version = "1.2.2";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -2672,7 +2719,11 @@ namespace CustomCrosshair
                     uint pid = 0;
                     GetWindowThreadProcessId(fg, out pid);
                     lastPid = pid;
-                    try { lastName = pid == 0 ? "" : System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; }
+                    try
+                    {
+                        if (pid == 0) lastName = "";
+                        else using (System.Diagnostics.Process pr = System.Diagnostics.Process.GetProcessById((int)pid)) lastName = pr.ProcessName;
+                    }
                     catch { lastName = ""; }
                 }
                 allowed = lastPid == ownPid || string.Equals(lastName, S.TargetApp, StringComparison.OrdinalIgnoreCase);
