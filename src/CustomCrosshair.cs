@@ -37,6 +37,9 @@ namespace CustomCrosshair
         public Color Accent = Color.FromArgb(34, 211, 238);
         public bool StyleV2 = false;
         public bool FivemAutoProfile = true;
+        public int OnboardV = 0;
+        public bool TourDone = false;
+        public string LastSeenVersion = "";
         public int MenuOpacity = 100;
         public string ImageFile = "";
         public int ImageScale = 100;
@@ -115,6 +118,9 @@ namespace CustomCrosshair
                 case "MenuTheme": MenuTheme = 4; break;
                 case "StyleV2": StyleV2 = v == "True"; break;
                 case "FivemAutoProfile": FivemAutoProfile = v == "True"; break;
+                case "OnboardV": if (ok) OnboardV = n; break;
+                case "TourDone": TourDone = v == "True"; break;
+                case "LastSeenVersion": LastSeenVersion = v; break;
                 case "Accent": if (ok) Accent = Color.FromArgb(255, Color.FromArgb(n)); break;
                 case "MenuOpacity": if (ok) MenuOpacity = Math.Max(70, Math.Min(100, n)); break;
                 case "ImageFile": ImageFile = v; break;
@@ -153,7 +159,8 @@ namespace CustomCrosshair
                 l.Add("Enabled=" + Enabled); l.Add("MenuKey=" + MenuKey);
                 l.Add("ShowMenuOnStart=" + ShowMenuOnStart); l.Add("StreamProof=" + StreamProof);
                 l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
-                l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
+                l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile);
+                l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -2073,9 +2080,8 @@ namespace CustomCrosshair
             Graphics g = e.Graphics;
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.DrawImage(logo, 30, 24, 42, 42);
-            Theme.Label(g, "WELKOM", Theme.Heavy, Theme.Text, new Rectangle(84, 22, 280, 26), TextFormatFlags.Left);
-            Theme.Bar(g, Theme.Text, 86, 50, 40);
-            Theme.Label(g, Theme.Caps("Custom Crosshair"), Theme.Spaced, Theme.Dim, new Rectangle(86, 56, 280, 16), TextFormatFlags.Left);
+            Theme.Label(g, "Welkom!", Theme.PageFont, Theme.Text, new Rectangle(84, 18, 280, 34), TextFormatFlags.Left);
+            Theme.Label(g, "Welkom bij Custom Crosshair", Theme.Normal, Theme.Dim, new Rectangle(86, 50, 280, 20), TextFormatFlags.Left);
             Theme.Label(g, "Hoe heet je?", Theme.Bold, Theme.Text, new Rectangle(30, 96, 320, 24), TextFormatFlags.Left);
             using (Pen p = new Pen(Theme.Border)) g.DrawRectangle(p, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
         }
@@ -2084,6 +2090,150 @@ namespace CustomCrosshair
         {
             base.OnMouseDown(e);
             if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }
+        }
+    }
+
+    public class SplashForm : Form
+    {
+        Bitmap logo = AppIcon.MakeBitmap(160);
+        public float Progress = 0f;
+        public string Status = "Laden...";
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+        public SplashForm()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(440, 280);
+            BackColor = Theme.Window;
+            TopMost = true;
+            ShowInTaskbar = true;
+            Text = "Custom Crosshair";
+            Icon = AppIcon.MakeIcon(32);
+            DoubleBuffered = true;
+        }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { int v = 2; DwmSetWindowAttribute(Handle, 33, ref v, 4); } catch { }
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            int W = ClientSize.Width;
+            using (Pen p = new Pen(Theme.Border)) g.DrawRectangle(p, 0, 0, W - 1, ClientSize.Height - 1);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(logo, W / 2 - 40, 36, 80, 80);
+            Theme.Label(g, "Custom Crosshair", Theme.PageFont, Theme.Text, new Rectangle(0, 128, W, 36), TextFormatFlags.HorizontalCenter);
+            Theme.Label(g, Status, Theme.Normal, Theme.Dim, new Rectangle(0, 166, W, 22), TextFormatFlags.HorizontalCenter);
+            RectangleF track = new RectangleF(90, 212, W - 180, 6);
+            Theme.FillRound(g, Theme.Track, track, 3);
+            if (Progress > 0) Theme.FillRound(g, Theme.Accent, new RectangleF(track.X, track.Y, track.Width * Math.Min(1f, Progress), track.Height), 3);
+            Theme.Label(g, "versie " + Updater.Version, Theme.Tiny, Theme.Faint, new Rectangle(0, 244, W, 18), TextFormatFlags.HorizontalCenter);
+        }
+    }
+
+    public class TourDim : Form
+    {
+        public Rectangle Hole = Rectangle.Empty;
+        static readonly Color Key = Color.FromArgb(255, 0, 255);
+        public TourDim()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            BackColor = Color.Black;
+            TransparencyKey = Key;
+            Opacity = 0.6;
+            DoubleBuffered = true;
+            TopMost = true;
+        }
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            if (!Hole.IsEmpty) using (SolidBrush b = new SolidBrush(Key)) e.Graphics.FillRectangle(b, Hole);
+        }
+    }
+
+    public class TourBubble : Form
+    {
+        string title, text, step;
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+        public TourBubble(string title, string text, string step, bool last, Action next, Action skip)
+        {
+            this.title = title; this.text = text; this.step = step;
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            ClientSize = new Size(320, 178);
+            BackColor = Theme.Card;
+            TopMost = true;
+            DoubleBuffered = true;
+            PrimaryButton nb = new PrimaryButton(last ? "Klaar" : "Volgende", next);
+            nb.BackColor = Theme.Card;
+            nb.SetBounds(176, 128, 128, 34);
+            Controls.Add(nb);
+            if (!last)
+            {
+                LinkRow sk = new LinkRow("Overslaan", skip);
+                sk.BackColor = Theme.Card;
+                sk.SetBounds(96, 132, 76, 26);
+                Controls.Add(sk);
+            }
+        }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { int v = 2; DwmSetWindowAttribute(Handle, 33, ref v, 4); } catch { }
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            using (Pen p = new Pen(Theme.Accent, 2)) g.DrawRectangle(p, 1, 1, ClientSize.Width - 3, ClientSize.Height - 3);
+            Theme.Label(g, title, Theme.Title, Theme.Text, new Rectangle(18, 14, 284, 26), TextFormatFlags.Left);
+            TextRenderer.DrawText(g, text, Theme.Normal, new Rectangle(18, 44, 286, 78), Theme.Dim, TextFormatFlags.WordBreak | TextFormatFlags.Left);
+            Theme.Label(g, step, Theme.Tiny, Theme.Faint, new Rectangle(18, 132, 70, 26), TextFormatFlags.Left);
+        }
+    }
+
+    public class WhatsNewForm : Form
+    {
+        Bitmap logo = AppIcon.MakeBitmap(112);
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+        public WhatsNewForm()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(400, 150 + Updater.Notes.Length * 30);
+            BackColor = Theme.Window;
+            TopMost = true;
+            ShowInTaskbar = false;
+            DoubleBuffered = true;
+            PrimaryButton ok = new PrimaryButton("Top!", delegate { Close(); });
+            ok.BackColor = Theme.Window;
+            ok.SetBounds(24, ClientSize.Height - 58, ClientSize.Width - 48, 36);
+            Controls.Add(ok);
+        }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { int v = 2; DwmSetWindowAttribute(Handle, 33, ref v, 4); } catch { }
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            using (Pen p = new Pen(Theme.Border)) g.DrawRectangle(p, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(logo, 24, 22, 36, 36);
+            Theme.Label(g, "Wat is er nieuw", Theme.PageFont, Theme.Text, new Rectangle(70, 20, 300, 34), TextFormatFlags.Left);
+            Theme.Label(g, "Custom Crosshair is bijgewerkt", Theme.Tiny, Theme.Dim, new Rectangle(72, 50, 300, 16), TextFormatFlags.Left);
+            int y = 84;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            foreach (string n in Updater.Notes)
+            {
+                using (SolidBrush b = new SolidBrush(Theme.Accent)) g.FillEllipse(b, 28, y + 8, 7, 7);
+                Theme.Label(g, n, Theme.Normal, Theme.Text, new Rectangle(46, y, ClientSize.Width - 70, 24), TextFormatFlags.Left);
+                y += 30;
+            }
         }
     }
 
@@ -2879,10 +3029,85 @@ namespace CustomCrosshair
 
 
 
+        TourDim tourDim; TourBubble tourBubble; int tourStep = -1;
+
+        public void StartTour()
+        {
+            if (!Visible) Toggle();
+            tourStep = 0;
+            ShowTourStep();
+        }
+
+        void ShowTourStep()
+        {
+            if (tourBubble != null) { tourBubble.Close(); tourBubble.Dispose(); tourBubble = null; }
+            if (tourStep < 0 || tourStep > 3) { EndTour(); return; }
+            int H = ClientSize.Height;
+            if (tourDim == null) { tourDim = new TourDim(); tourDim.Bounds = Bounds; tourDim.Show(this); }
+            tourDim.Bounds = Bounds;
+            Rectangle hole = Rectangle.Empty;
+            string title = "", text = "";
+            if (tourStep == 0)
+            {
+                hole = new Rectangle(0, 0, 201, H);
+                title = "Pagina's";
+                text = "Hier kies je wat je wilt aanpassen: je crosshair, kleur, positie, je eigen tekening, profielen en instellingen.";
+            }
+            else if (tourStep == 1)
+            {
+                hole = new Rectangle(212, 8, 452, H - 16);
+                title = "Aanpassen";
+                text = "Hier stel je alles in. Alles wat je verandert wordt meteen opgeslagen.";
+            }
+            else if (tourStep == 2)
+            {
+                hole = new Rectangle(664, 50, 326, H - 60);
+                title = "Live voorbeeld";
+                text = "Hier zie je je crosshair zoals hij in je game komt. Met de schakelaars zet je hem snel aan of uit.";
+            }
+            else
+            {
+                title = "Klaar!";
+                text = "Druk op " + Theme.KeyName(s.MenuKey) + " om dit menu te openen en te sluiten, ook midden in je game. Veel plezier!";
+            }
+            tourDim.Hole = hole;
+            tourDim.Invalidate();
+            tourBubble = new TourBubble(title, text, (tourStep + 1) + " / 4", tourStep == 3,
+                delegate { tourStep++; BeginInvoke(new Action(ShowTourStep)); },
+                delegate { BeginInvoke(new Action(EndTour)); });
+            Point pos;
+            if (hole.IsEmpty)
+                pos = new Point(Left + (Width - 320) / 2, Top + (Height - 178) / 2);
+            else
+            {
+                Rectangle sh = RectangleToScreen(hole);
+                int x = sh.Right + 16;
+                if (x + 320 > Right) x = sh.Left - 336;
+                if (x < Left) x = sh.Left + (sh.Width - 320) / 2;
+                pos = new Point(x, Top + 120);
+            }
+            tourBubble.Location = pos;
+            tourBubble.Show(tourDim);
+        }
+
+        void EndTour()
+        {
+            tourStep = -1;
+            if (tourBubble != null) { tourBubble.Close(); tourBubble.Dispose(); tourBubble = null; }
+            if (tourDim != null) { tourDim.Close(); tourDim.Dispose(); tourDim = null; }
+            if (!s.TourDone) { s.TourDone = true; s.Save(); }
+        }
+
+        public void ShowWhatsNew()
+        {
+            using (WhatsNewForm w = new WhatsNewForm()) w.ShowDialog(this);
+        }
+
         public void Toggle()
         {
             if (Visible)
             {
+                if (tourStep >= 0) EndTour();
                 Program.CancelCapture();
                 Hide();
             }
@@ -3166,7 +3391,11 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.6.2";
+        public const string Version = "1.7.0";
+        public static readonly string[] Notes = new string[] {
+            "Nieuw opstartscherm met het Hex-logo",
+            "Rondleiding voor nieuwe gebruikers",
+            "Dit venster: na elke update zie je wat er nieuw is" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -3494,9 +3723,43 @@ namespace CustomCrosshair
             Theme.Apply(S.MenuTheme, S.Accent);
             FiveM.Load();
 
-            // eerst verplicht updaten als er een nieuwe versie is
-            string upUrl, upErr;
-            if (Updater.UpdateAvailable(out upUrl, out upErr)) { Updater.ForceUpdate(upUrl); return; }
+            // eenmalig: iedereen opnieuw laten beginnen (naam + rondleiding)
+            if (S.OnboardV < 1)
+            {
+                S.UserName = "";
+                S.TourDone = false;
+                S.OnboardV = 1;
+                S.Save();
+            }
+
+            // opstartscherm, ondertussen verplicht op updates controleren
+            SplashForm sp = new SplashForm();
+            sp.Show();
+            sp.Refresh();
+            DateTime t0 = DateTime.Now;
+            string upUrl = null, upErr = null;
+            bool upAvail = false, upDone = false;
+            System.Threading.Thread uth = new System.Threading.Thread(delegate()
+            {
+                upAvail = Updater.UpdateAvailable(out upUrl, out upErr);
+                upDone = true;
+            });
+            uth.IsBackground = true;
+            uth.Start();
+            while (!upDone || (DateTime.Now - t0).TotalMilliseconds < 1400)
+            {
+                double el = (DateTime.Now - t0).TotalMilliseconds;
+                sp.Progress = (float)Math.Min(upDone ? 1.0 : 0.85, el / 1400.0);
+                if (!upDone && el > 1400) sp.Status = "Controleren op updates...";
+                sp.Invalidate();
+                Application.DoEvents();
+                System.Threading.Thread.Sleep(15);
+                if (el > 9000) break;
+            }
+            sp.Progress = 1f; sp.Refresh();
+            System.Threading.Thread.Sleep(150);
+            sp.Close(); sp.Dispose();
+            if (upAvail) { Updater.ForceUpdate(upUrl); return; }
             if (string.IsNullOrEmpty(S.UserName))
             {
                 using (NameForm nf = new NameForm(""))
@@ -3570,7 +3833,12 @@ namespace CustomCrosshair
             };
             KeyHook.Start();
 
-            if (S.ShowMenuOnStart) menu.Toggle();
+            bool tour = !S.TourDone;
+            bool whatsNew = !tour && S.LastSeenVersion.Length > 0 && S.LastSeenVersion != Updater.Version;
+            if (S.ShowMenuOnStart || tour || whatsNew) menu.Toggle();
+            if (S.LastSeenVersion != Updater.Version) { S.LastSeenVersion = Updater.Version; S.Save(); }
+            if (tour) menu.BeginInvoke(new Action(menu.StartTour));
+            else if (whatsNew) menu.BeginInvoke(new Action(menu.ShowWhatsNew));
             Timer upd = new Timer();
             upd.Interval = 30 * 60 * 1000;
             upd.Tick += delegate { Updater.Check(overlay, false); };
