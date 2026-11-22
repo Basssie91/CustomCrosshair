@@ -2584,19 +2584,19 @@ namespace CustomCrosshair
                 cards.Add(sv);
 
                 Card add = new Card("\uE710", "Server toevoegen", colW);
-                add.Add(new InfoRow("Plak de join-link van een server, bijv. cfx.re/join/abc123. Je vindt die in FiveM of in de Discord van de server.", 32));
+                add.Add(new InfoRow("Plak het connect-adres van een server, bijv. connect 45.8.187.84:30120, of een join-link zoals cfx.re/join/abc123.", 32));
                 InputRow inp = null;
                 Action addIt = delegate
                 {
                     string code = FiveM.ParseCode(inp.Value);
-                    if (code == null) { MessageBox.Show(this, "Dit is geen geldige join-link. Hij ziet eruit als cfx.re/join/abc123.", "Custom Crosshair"); return; }
+                    if (code == null) { MessageBox.Show(this, "Dit adres snap ik niet. Gebruik bijv. connect 45.8.187.84:30120 of cfx.re/join/abc123.", "Custom Crosshair"); return; }
                     foreach (FServer x in FiveM.Servers) if (x.Code == code) { MessageBox.Show(this, "Deze server staat al in je lijst.", "Custom Crosshair"); return; }
-                    FServer nf = new FServer(); nf.Code = code; nf.Name = "cfx.re/join/" + code;
+                    FServer nf = new FServer(); nf.Code = code; nf.Name = FiveM.IsDirect(code) ? code : "cfx.re/join/" + code;
                     FiveM.Servers.Add(nf); FiveM.Save();
                     Rebuild();
                     FiveM.Refresh(this, delegate { content.Invalidate(true); });
                 };
-                inp = add.Add(new InputRow("cfx.re/join/...", addIt));
+                inp = add.Add(new InputRow("connect 1.2.3.4:30120", addIt));
                 add.Add(new PrimaryButton("Toevoegen", addIt));
                 add.Add(new ToggleRow("\uE8FD", "Crosshair-profiel automatisch wisselen bij joinen", s.FivemAutoProfile, v => { s.FivemAutoProfile = v; s.Save(); }));
                 add.Add(new ButtonRow("\uE74D", "FiveM-cache legen", false, delegate { FiveM.ClearCache(this); }));
@@ -3022,12 +3022,19 @@ namespace CustomCrosshair
             catch { }
         }
 
+        public static bool IsDirect(string code) { return code.Contains(":"); }
+
         public static string ParseCode(string input)
         {
             if (input == null) return null;
             input = input.Trim();
+            if (input.StartsWith("connect ", StringComparison.OrdinalIgnoreCase)) input = input.Substring(8).Trim();
+            input = System.Text.RegularExpressions.Regex.Replace(input, "^fivem://connect/", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(input, "join/([A-Za-z0-9]+)");
             if (m.Success) return m.Groups[1].Value.ToLower();
+            System.Text.RegularExpressions.Match d = System.Text.RegularExpressions.Regex.Match(input,
+                "^((?:\\d{1,3}\\.){3}\\d{1,3}|[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+)(?::(\\d{2,5}))?$");
+            if (d.Success) return d.Groups[1].Value.ToLower() + ":" + (d.Groups[2].Success ? d.Groups[2].Value : "30120");
             if (System.Text.RegularExpressions.Regex.IsMatch(input, "^[A-Za-z0-9]{4,10}$")) return input.ToLower();
             return null;
         }
@@ -3041,8 +3048,44 @@ namespace CustomCrosshair
             return name;
         }
 
+        static string GetText(string url)
+        {
+            System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
+            System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
+            req.UserAgent = "Mozilla/5.0 CustomCrosshair";
+            req.Timeout = 6000; req.ReadWriteTimeout = 6000;
+            using (System.Net.WebResponse r = req.GetResponse())
+            using (StreamReader sr = new StreamReader(r.GetResponseStream())) return sr.ReadToEnd();
+        }
+
+        static void FetchDirect(FServer f)
+        {
+            try
+            {
+                string json = GetText("http://" + f.Code + "/dynamic.json");
+                System.Text.RegularExpressions.Match c = System.Text.RegularExpressions.Regex.Match(json, "\"clients\"\\s*:\\s*(\\d+)");
+                System.Text.RegularExpressions.Match mx = System.Text.RegularExpressions.Regex.Match(json, "\"sv_maxclients\"\\s*:\\s*\"?(\\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                System.Text.RegularExpressions.Match hn = System.Text.RegularExpressions.Regex.Match(json, "\"hostname\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                f.Clients = c.Success ? int.Parse(c.Groups[1].Value) : 0;
+                f.Max = mx.Success ? int.Parse(mx.Groups[1].Value) : 0;
+                f.Online = true;
+                string name = hn.Success ? hn.Groups[1].Value : "";
+                try
+                {
+                    string info = GetText("http://" + f.Code + "/info.json");
+                    System.Text.RegularExpressions.Match pn = System.Text.RegularExpressions.Regex.Match(info, "\"sv_projectName\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                    if (pn.Success && pn.Groups[1].Value.Trim().Length > 0) name = pn.Groups[1].Value;
+                }
+                catch { }
+                if (name.Length > 0) f.Name = Clean(name);
+            }
+            catch { f.Online = false; f.Clients = 0; }
+            f.Loaded = true;
+        }
+
         static void Fetch(FServer f)
         {
+            if (IsDirect(f.Code)) { FetchDirect(f); return; }
             try
             {
                 System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
@@ -3082,7 +3125,7 @@ namespace CustomCrosshair
 
         public static void Join(FServer f)
         {
-            try { System.Diagnostics.Process.Start("fivem://connect/cfx.re/join/" + f.Code); }
+            try { System.Diagnostics.Process.Start("fivem://connect/" + (IsDirect(f.Code) ? f.Code : "cfx.re/join/" + f.Code)); }
             catch { MessageBox.Show("FiveM kon niet worden gestart. Is FiveM geinstalleerd?", "Custom Crosshair"); }
         }
 
@@ -3124,7 +3167,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.6.0";
+        public const string Version = "1.6.1";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
