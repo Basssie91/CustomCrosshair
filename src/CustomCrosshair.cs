@@ -111,7 +111,7 @@ namespace CustomCrosshair
                 case "UserName": UserName = v; break;
                 case "AutoUpdate": AutoUpdate = v == "True"; break;
                 case "TargetApp": TargetApp = v; break;
-                case "MenuTheme": if (ok) MenuTheme = Math.Max(0, Math.Min(4, n)); break;
+                case "MenuTheme": MenuTheme = 4; break;
                 case "StyleV2": StyleV2 = v == "True"; break;
                 case "Accent": if (ok) Accent = Color.FromArgb(255, Color.FromArgb(n)); break;
                 case "MenuOpacity": if (ok) MenuOpacity = Math.Max(70, Math.Min(100, n)); break;
@@ -766,6 +766,7 @@ namespace CustomCrosshair
 
         public static void Apply(int style, Color accent)
         {
+            style = 4;   // Glass is de enige stijl
             Style = style;
             Color[] pal = PaletteFor(style);
             Window = pal[0]; Sidebar = pal[1]; Card = pal[2]; Border = pal[3]; Hover = pal[4];
@@ -2522,24 +2523,23 @@ namespace CustomCrosshair
             }
             else if (page == 5)
             {
-                L = new Card("\uE771", "Menustijl", cw);
-                L.Add(new ThemeTiles(() => s.MenuTheme, v => { s.MenuTheme = v; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
-                L.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v =>
-                {
-                    s.MenuOpacity = v; s.Save();
-                    Opacity = v / 100.0;
-                }));
-
-                R = new Card("\uE790", "Accentkleur", cw);
-                R.Add(new InfoRow("De kleur van schakelaars, schuifjes, knoppen en het streepje bij de pagina waar je bent.", 32));
-                R.Add(new SwatchRow(AccentPresets, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
-                R.Add(new ColorRow("\uE790", "Eigen accentkleur", () => s.Accent, delegate
+                L = new Card("\uE790", "Accentkleur", cw);
+                L.Add(new InfoRow("De kleur van schakelaars, schuifjes, knoppen en het streepje bij elk kopje.", 32));
+                L.Add(new SwatchRow(AccentPresets, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
+                L.Add(new ColorRow("\uE790", "Eigen accentkleur", () => s.Accent, delegate
                 {
                     using (ColorDialog cd = new ColorDialog())
                     {
                         cd.Color = s.Accent; cd.FullOpen = true;
                         if (cd.ShowDialog(this) == DialogResult.OK) { s.Accent = cd.Color; s.Save(); BeginInvoke(new Action(ApplyTheme)); }
                     }
+                }));
+
+                R = new Card("\uE7B3", "Menu", cw);
+                R.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v =>
+                {
+                    s.MenuOpacity = v; s.Save();
+                    Opacity = v / 100.0;
                 }));
             }
             else if (page == 4)
@@ -2740,7 +2740,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.4.0";
+        public const string Version = "1.4.1";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
