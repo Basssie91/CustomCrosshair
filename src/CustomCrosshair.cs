@@ -1516,7 +1516,7 @@ namespace CustomCrosshair
             content.SuspendLayout();
             while (content.Controls.Count > 0) content.Controls[0].Dispose();
             int cw = (content.Width - 12) / 2;
-            Card L = null, R = null, C = null;
+            Card L = null, R = null, C = null, U = null;
             bool stacked = false;
 
             if (page == 0 && tab == 0)
@@ -1634,10 +1634,13 @@ namespace CustomCrosshair
                 }));
                 L.Add(new InfoRow("Streamproof aan = crosshair en menu zijn onzichtbaar in OBS, Discord-streams, opnames en screenshots. Jij ziet ze gewoon.", 44));
 
+                U = new Card("\uE895", "Updates", cw);
+                U.Add(new InfoRow("Je hebt versie " + Updater.Version + ". Klik hieronder om te kijken of er een nieuwere versie op GitHub staat.", 34));
+                U.Add(new PrimaryButton("Nu op updates controleren", delegate { Updater.Check(this, true); }));
+                U.Add(new ToggleRow("\uE895", "Automatisch controleren bij opstarten", s.AutoUpdate, v => { s.AutoUpdate = v; Changed(); }));
+
                 R = new Card("\uE946", "Overig", cw);
                 R.Add(new InfoRow("Alles wordt automatisch opgeslagen. Zet je game op 'Venster zonder rand', anders zie je de crosshair niet.", 48));
-                R.Add(new ToggleRow("\uE895", "Automatisch op updates letten", s.AutoUpdate, v => { s.AutoUpdate = v; Changed(); }));
-                R.Add(new ButtonRow("\uE895", "Updates zoeken (v" + Updater.Version + ")", false, delegate { Updater.Check(this, true); }));
                 R.Add(new ButtonRow("\uE77B", "Naam wijzigen", false, delegate
                 {
                     using (NameForm nf = new NameForm(s.UserName))
@@ -1653,6 +1656,11 @@ namespace CustomCrosshair
             {
                 R.Location = stacked ? new Point(0, L.Height + 12) : new Point(cw + 12, 0);
                 content.Controls.Add(R);
+            }
+            if (U != null)
+            {
+                U.Location = new Point(0, L.Bottom + 12);
+                content.Controls.Add(U);
             }
             if (C != null)
             {
@@ -1735,7 +1743,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.2";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
