@@ -1635,7 +1635,7 @@ namespace CustomCrosshair
                 L.Add(new InfoRow("Streamproof aan = crosshair en menu zijn onzichtbaar in OBS, Discord-streams, opnames en screenshots. Jij ziet ze gewoon.", 44));
 
                 U = new Card("\uE895", "Updates", cw);
-                U.Add(new InfoRow("Je hebt versie " + Updater.Version + ". Klik hieronder om te kijken of er een nieuwere versie op GitHub staat.", 34));
+                U.Add(new InfoRow("Klik hieronder om te kijken of er een update is.", 22));
                 U.Add(new PrimaryButton("Nu op updates controleren", delegate { Updater.Check(this, true); }));
                 U.Add(new ToggleRow("\uE895", "Automatisch controleren bij opstarten", s.AutoUpdate, v => { s.AutoUpdate = v; Changed(); }));
 
@@ -1743,7 +1743,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.2";
+        public const string Version = "1.0.3";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
@@ -1782,10 +1782,10 @@ namespace CustomCrosshair
                         }
                         if (!IsNewer(tag, Version))
                         {
-                            if (manual) MessageBox.Show("Je hebt de nieuwste versie (" + Version + ").", "Custom Crosshair");
+                            if (manual) MessageBox.Show("Je app is up-to-date.", "Custom Crosshair");
                             return;
                         }
-                        if (MessageBox.Show("Er is een nieuwe versie van Custom Crosshair: " + tag + "\nJij hebt nu " + Version + ".\n\nNu updaten?",
+                        if (MessageBox.Show("Er is een update voor Custom Crosshair.\n\nNu updaten?",
                                 "Custom Crosshair - update", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
                             Install(ui, url);
                     }));
