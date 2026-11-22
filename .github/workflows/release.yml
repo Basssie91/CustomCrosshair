@@ -1,0 +1,60 @@
+name: Bouwen en release
+
+# Bij elke wijziging in de code op main: als het versienummer in
+# src/CustomCrosshair.cs nieuw is, bouwt GitHub de .exe en maakt een release.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'build.ps1'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versie lezen
+        id: ver
+        shell: pwsh
+        run: |
+          $src = Get-Content src/CustomCrosshair.cs -Raw
+          $m = [regex]::Match($src, 'const string Version = "([0-9.]+)"')
+          if (-not $m.Success) { throw "Geen versienummer gevonden" }
+          "version=$($m.Groups[1].Value)" >> $env:GITHUB_OUTPUT
+
+      - name: Bestaat deze release al?
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v${{ steps.ver.outputs.version }}" 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { "exists=true" >> $env:GITHUB_OUTPUT } else { "exists=false" >> $env:GITHUB_OUTPUT }
+          exit 0
+
+      - name: Bouwen
+        if: steps.check.outputs.exists == 'false'
+        shell: powershell
+        run: ./build.ps1
+
+      - name: Release publiceren
+        if: steps.check.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $msg = git log -1 --pretty=%s
+          gh release create "v$v" CustomCrosshair.exe --title "Custom Crosshair $v" --notes "$msg"
+
+      - name: Versie bestaat al
+        if: steps.check.outputs.exists == 'true'
+        shell: pwsh
+        run: Write-Host "Release v${{ steps.ver.outputs.version }} bestaat al, er wordt niets gepubliceerd."
