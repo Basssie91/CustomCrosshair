@@ -1234,54 +1234,13 @@ namespace CustomCrosshair
             if (e.Button == MouseButtons.Left || e.Button == MouseButtons.Right)
             {
                 painting = true; Capture = true;
-                int idx = CellIndex(e.X, e.Y);
-                bool startOnFilled = idx >= 0 && s.Pixels[idx] == '1';
-                if (e.Button == MouseButtons.Right || EraserTool || startOnFilled) brush = '0';
-                else brush = '1';
+                brush = e.Button == MouseButtons.Right ? '0' : '1';
                 PaintAt(e.X, e.Y);
             }
             base.OnMouseDown(e);
         }
         protected override void OnMouseMove(MouseEventArgs e) { if (painting) PaintAt(e.X, e.Y); base.OnMouseMove(e); }
         protected override void OnMouseUp(MouseEventArgs e) { painting = false; Capture = false; base.OnMouseUp(e); }
-    }
-
-    public class ToolRow : Ctl
-    {
-        PixelEditor ed; int hover = -1;
-        public ToolRow(PixelEditor ed) { this.ed = ed; Height = 34; Cursor = Cursors.Hand; }
-        Rectangle Seg(int i) { return new Rectangle(i * 104, 2, 100, Height - 4); }
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            Graphics g = e.Graphics;
-            string[] names = new string[] { "Potlood", "Gum" };
-            string[] glyphs = new string[] { "\uE70F", "\uE75C" };
-            for (int i = 0; i < 2; i++)
-            {
-                Rectangle r = Seg(i);
-                bool sel = (i == 1) == ed.EraserTool;
-                if (sel) Theme.FillRound(g, Color.FromArgb(226, 226, 232), r, 5);
-                else Theme.FillRound(g, hover == i ? Color.FromArgb(44, 44, 52) : Color.FromArgb(32, 32, 38), r, 5);
-                Color c = sel ? Color.FromArgb(18, 18, 22) : Theme.Text;
-                Theme.Glyph(g, glyphs[i], c, new Rectangle(r.X + 10, r.Y, 18, r.Height));
-                Theme.Label(g, names[i], Theme.Bold, c, new Rectangle(r.X + 32, r.Y, r.Width - 36, r.Height), TextFormatFlags.Left);
-            }
-            Theme.Label(g, "rechtermuis = gum", Theme.Tiny, Theme.Dim, new Rectangle(212, 0, Width - 212, Height), TextFormatFlags.Right);
-        }
-        protected override void OnMouseMove(MouseEventArgs e)
-        {
-            int h = Seg(0).Contains(e.Location) ? 0 : (Seg(1).Contains(e.Location) ? 1 : -1);
-            if (h != hover) { hover = h; Invalidate(); }
-            base.OnMouseMove(e);
-        }
-        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseClick(MouseEventArgs e)
-        {
-            if (Seg(0).Contains(e.Location)) ed.EraserTool = false;
-            else if (Seg(1).Contains(e.Location)) ed.EraserTool = true;
-            Invalidate();
-            base.OnMouseClick(e);
-        }
     }
 
     public class KeyRow : Row
@@ -1876,9 +1835,8 @@ namespace CustomCrosshair
             else if (page == 0)
             {
                 L = new Card("\uE70F", "Zelf tekenen", cw);
-                PixelEditor editor = new PixelEditor(s, delegate { Changed(); });
-                L.Add(new ToolRow(editor));
-                L.Add(editor);
+                L.Add(new InfoRow("Linkermuis = tekenen, rechtermuis = gummen. Het gemarkeerde vakje is het midden van je scherm.", 32));
+                PixelEditor editor = L.Add(new PixelEditor(s, delegate { Changed(); }));
                 L.Add(new SliderRow("\uE740", "Pixelgrootte", 1, 6, s.PixelSize, v => v + "x", v => { s.PixelSize = v; Changed(); }));
                 L.Add(new ButtonRow("\uE74D", "Alles wissen", false, delegate
                 {
@@ -2112,7 +2070,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.0.9";
+        public const string Version = "1.0.10";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
 
