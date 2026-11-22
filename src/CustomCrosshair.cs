@@ -1387,59 +1387,128 @@ namespace CustomCrosshair
     public class StyleGrid : Ctl
     {
         Settings s; Action<int> cb; int hoverTile = -1;
-        const int TileH = 78, Gap = 8;
+        const int TileH = 64, Gap = 8, HeadH = 24;
+        static readonly string[] Groups = new string[] { "Basis", "Cirkels", "Vormen", "Speciaal" };
+        static readonly int[][] Items = new int[][] {
+            new int[] { 0, 2, 1, 5, 20, 22 },
+            new int[] { 3, 4, 18, 19 },
+            new int[] { 6, 7, 8, 9, 16, 17, 10 },
+            new int[] { 11, 12, 21, 13 } };
+        List<int> tileStyle = new List<int>();
+        List<Rectangle> tileRect = new List<Rectangle>();
+        List<Point> heads = new List<Point>();
+
         public StyleGrid(Settings s, Action<int> cb) { this.s = s; this.cb = cb; Height = 300; Cursor = Cursors.Hand; }
-        int Cols { get { return Math.Max(3, (Width + Gap) / (92 + Gap)); } }
-        int RowsCount { get { return (Settings.StyleNames.Length + Cols - 1) / Cols; } }
-        protected override void OnResize(EventArgs e)
+
+        void Layout2()
         {
-            base.OnResize(e);
-            int h = RowsCount * (TileH + Gap);
-            if (Width > 0 && Height != h) Height = h;
+            tileStyle.Clear(); tileRect.Clear(); heads.Clear();
+            if (Width <= 0) return;
+            int cols = Math.Max(3, (Width + Gap) / (76 + Gap));
+            int w = (Width - Gap * (cols - 1)) / cols;
+            int y = 0;
+            for (int gi = 0; gi < Groups.Length; gi++)
+            {
+                heads.Add(new Point(0, y));
+                y += HeadH;
+                int[] items = Items[gi];
+                for (int k = 0; k < items.Length; k++)
+                {
+                    int col = k % cols, row = k / cols;
+                    tileStyle.Add(items[k]);
+                    tileRect.Add(new Rectangle(col * (w + Gap), y + row * (TileH + Gap), w, TileH));
+                }
+                int rows = (items.Length + cols - 1) / cols;
+                y += rows * (TileH + Gap) + 4;
+            }
+            if (Height != y) Height = y;
         }
-        Rectangle TileRect(int i)
-        {
-            int w = (Width - Gap * (Cols - 1)) / Cols;
-            return new Rectangle((i % Cols) * (w + Gap), (i / Cols) * (TileH + Gap), w, TileH);
-        }
+
+        protected override void OnResize(EventArgs e) { base.OnResize(e); Layout2(); Invalidate(); }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            for (int i = 0; i < Settings.StyleNames.Length; i++)
+            if (tileRect.Count == 0) Layout2();
+            for (int gi = 0; gi < Groups.Length && gi < heads.Count; gi++)
             {
-                Rectangle t = TileRect(i);
-                bool sel = i == s.Style;
+                string h = Theme.Lounge ? Theme.Caps(Groups[gi]) : Groups[gi].ToUpper();
+                Theme.Label(g, h, Theme.Small, Theme.Faint, new Rectangle(2, heads[gi].Y, Width, HeadH - 4), TextFormatFlags.Left);
+            }
+            for (int i = 0; i < tileRect.Count; i++)
+            {
+                Rectangle t = tileRect[i];
+                int style = tileStyle[i];
+                bool sel = style == s.Style;
                 Theme.FillRound(g, sel ? Theme.Selected : (i == hoverTile ? Theme.Hover : Theme.Chip), t, 7);
-                Rectangle pr = new Rectangle(t.X + 6, t.Y + 6, t.Width - 12, t.Height - 30);
+                Rectangle pr = new Rectangle(t.X + 5, t.Y + 5, t.Width - 10, t.Height - 26);
                 Theme.FillRound(g, Theme.Window, pr, 4);
                 Settings c = s.Clone();
-                c.Style = i; c.OffsetX = 0; c.OffsetY = 0;
-                float sc = (pr.Height / 2f - 3) / (float)(Math.Max(0, c.Gap) + Math.Max(1, c.Length) + 4);
-                sc = Math.Max(0.6f, Math.Min(2f, sc));
+                c.Style = style; c.OffsetX = 0; c.OffsetY = 0;
+                float sc = (pr.Height / 2f - 2) / (float)(Math.Max(0, c.Gap) + Math.Max(1, c.Length) + 4);
+                sc = Math.Max(0.5f, Math.Min(1.6f, sc));
                 GraphicsState st = g.Save();
                 g.SetClip(pr);
                 g.TranslateTransform(pr.X + pr.Width / 2f, pr.Y + pr.Height / 2f);
                 g.ScaleTransform(sc, sc);
                 Crosshair.Draw(g, c, 0, 0);
                 g.Restore(st);
-                Theme.Label(g, Settings.StyleNames[i], Theme.Tiny, sel ? Theme.Text : Theme.Dim,
-                            new Rectangle(t.X + 2, t.Bottom - 23, t.Width - 4, 20), TextFormatFlags.HorizontalCenter);
+                Theme.Label(g, Settings.StyleNames[style], Theme.Tiny, sel ? Theme.Text : Theme.Dim,
+                            new Rectangle(t.X + 2, t.Bottom - 21, t.Width - 4, 18), TextFormatFlags.HorizontalCenter);
                 if (sel) Theme.DrawRound(g, Theme.Accent, t, 7);
             }
         }
+
+        int Hit(Point p)
+        {
+            for (int i = 0; i < tileRect.Count; i++) if (tileRect[i].Contains(p)) return i;
+            return -1;
+        }
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            int h = -1;
-            for (int i = 0; i < Settings.StyleNames.Length; i++) if (TileRect(i).Contains(e.Location)) h = i;
+            int h = Hit(e.Location);
             if (h != hoverTile) { hoverTile = h; Invalidate(); }
             base.OnMouseMove(e);
         }
         protected override void OnMouseLeave(EventArgs e) { hoverTile = -1; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnMouseClick(MouseEventArgs e)
         {
+            int h = Hit(e.Location);
+            if (e.Button == MouseButtons.Left && h >= 0) { cb(tileStyle[h]); Invalidate(); }
+            base.OnMouseClick(e);
+        }
+    }
+
+    public class TwoButtons : Ctl
+    {
+        string a, b; Action ca, cb; int hover = -1;
+        public TwoButtons(string a, Action ca, string b, Action cb) { this.a = a; this.b = b; this.ca = ca; this.cb = cb; Height = 34; Cursor = Cursors.Hand; }
+        Rectangle R(int i) { int w = (Width - 8) / 2; return new Rectangle(i * (w + 8), 0, w, Height - 1); }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                Rectangle r = R(i);
+                bool primary = i == 0;
+                Color bg = primary ? (hover == i ? ControlPaint.Light(Theme.Accent, 0.4f) : Theme.Accent) : (hover == i ? Theme.ChipHover : Theme.Chip);
+                Theme.FillRound(e.Graphics, bg, r, 6);
+                Theme.Label(e.Graphics, i == 0 ? a : b, Theme.Bold, primary ? Theme.AccentText : Theme.Text, r, TextFormatFlags.HorizontalCenter);
+            }
+        }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int h = R(0).Contains(e.Location) ? 0 : (R(1).Contains(e.Location) ? 1 : -1);
+            if (h != hover) { hover = h; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
             if (e.Button == MouseButtons.Left)
-                for (int i = 0; i < Settings.StyleNames.Length; i++)
-                    if (TileRect(i).Contains(e.Location)) { cb(i); Invalidate(); }
+            {
+                if (R(0).Contains(e.Location)) ca();
+                else if (R(1).Contains(e.Location)) cb();
+            }
             base.OnMouseClick(e);
         }
     }
@@ -2071,7 +2140,9 @@ namespace CustomCrosshair
                 stacked = true;
                 int sw = content.Width - SystemInformation.VerticalScrollBarWidth - 4;
                 L = new Card("X", "Kies je crosshair", sw);
-                L.Add(new StyleGrid(s, v => { s.Style = v; Changed(); }));
+                if (s.Style == Settings.StyleImage || s.Style == Settings.StylePixels)
+                    L.Add(new InfoRow("Je gebruikt nu je eigen " + (s.Style == Settings.StyleImage ? "plaatje" : "tekening") + " (tabblad Eigen). Kies hieronder een stijl om terug te gaan.", 20));
+                L.Add(new StyleGrid(s, v => { s.Style = v; Changed(); Rebuild(); }));
             }
             else if (page == 0 && tab == 1)
             {
@@ -2102,7 +2173,11 @@ namespace CustomCrosshair
                 L.Add(new InfoRow("Linkermuis = tekenen, rechtermuis = gummen. Het gemarkeerde vakje is het midden van je scherm.", 32));
                 PixelEditor editor = L.Add(new PixelEditor(s, delegate { Changed(); }));
                 L.Add(new SliderRow("\uE740", "Pixelgrootte", 1, 6, s.PixelSize, v => v + "x", v => { s.PixelSize = v; Changed(); }));
-                L.Add(new ButtonRow("\uE74D", "Alles wissen", false, delegate
+                L.Add(new TwoButtons("Tekening gebruiken", delegate
+                {
+                    s.Style = Settings.StylePixels;
+                    Changed();
+                }, "Alles wissen", delegate
                 {
                     s.Pixels = new string('0', Settings.Grid * Settings.Grid);
                     s.Style = Settings.StylePixels;
@@ -2130,6 +2205,13 @@ namespace CustomCrosshair
                     }
                 }));
                 R.Add(new SliderRow("\uE740", "Grootte plaatje", 10, 400, s.ImageScale, v => v + "%", v => { s.ImageScale = v; Changed(); }));
+                if (!string.IsNullOrEmpty(s.ImageFile))
+                    R.Add(new PrimaryButton(s.Style == Settings.StyleImage ? "Plaatje is actief" : "Plaatje gebruiken", delegate
+                    {
+                        s.Style = Settings.StyleImage;
+                        Changed();
+                        Rebuild();
+                    }));
                 R.Add(new PreviewBox(s));
             }
             else if (page == 1)
@@ -2355,7 +2437,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.2.0";
+        public const string Version = "1.2.1";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
