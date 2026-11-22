@@ -36,6 +36,7 @@ namespace CustomCrosshair
         public int MenuTheme = 4;
         public Color Accent = Color.FromArgb(34, 211, 238);
         public bool StyleV2 = false;
+        public bool FivemAutoProfile = true;
         public int MenuOpacity = 100;
         public string ImageFile = "";
         public int ImageScale = 100;
@@ -113,6 +114,7 @@ namespace CustomCrosshair
                 case "TargetApp": TargetApp = v; break;
                 case "MenuTheme": MenuTheme = 4; break;
                 case "StyleV2": StyleV2 = v == "True"; break;
+                case "FivemAutoProfile": FivemAutoProfile = v == "True"; break;
                 case "Accent": if (ok) Accent = Color.FromArgb(255, Color.FromArgb(n)); break;
                 case "MenuOpacity": if (ok) MenuOpacity = Math.Max(70, Math.Min(100, n)); break;
                 case "ImageFile": ImageFile = v; break;
@@ -151,7 +153,7 @@ namespace CustomCrosshair
                 l.Add("Enabled=" + Enabled); l.Add("MenuKey=" + MenuKey);
                 l.Add("ShowMenuOnStart=" + ShowMenuOnStart); l.Add("StreamProof=" + StreamProof);
                 l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
-                l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
+                l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -1576,6 +1578,69 @@ namespace CustomCrosshair
         }
     }
 
+    public class ServerRow : Ctl
+    {
+        FServer f; Action join, remove, profile; int hover = -1;
+        public ServerRow(FServer f, Action join, Action remove, Action profile)
+        { this.f = f; this.join = join; this.remove = remove; this.profile = profile; Height = 80; }
+        Rectangle JoinR { get { return new Rectangle(Width - 86, 22, 74, 32); } }
+        Rectangle DelR { get { return new Rectangle(Width - 116, 26, 24, 24); } }
+        Rectangle ProfR { get { return new Rectangle(34, 52, 220, 18); } }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            Theme.FillRound(g, hover >= 0 ? Theme.ChipHover : Theme.Chip, new RectangleF(0, 0, Width - 1, Height - 1), 10);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Color dot = !f.Loaded ? Theme.Dim : (f.Online ? Color.FromArgb(52, 211, 120) : Color.FromArgb(239, 90, 90));
+            using (SolidBrush b = new SolidBrush(dot)) g.FillEllipse(b, 14, 15, 10, 10);
+            Theme.Label(g, f.Name, Theme.Bold, Theme.Text, new Rectangle(34, 8, Width - 160, 24), TextFormatFlags.Left);
+            string info = !f.Loaded ? "laden..." : (f.Online ? "Online  -  " + f.Clients + " / " + f.Max + " spelers" : "Offline");
+            Theme.Label(g, info, Theme.Tiny, Theme.Dim, new Rectangle(34, 30, Width - 160, 18), TextFormatFlags.Left);
+            float fr = f.Max > 0 ? Math.Min(1f, f.Clients / (float)f.Max) : 0f;
+            RectangleF bar = new RectangleF(34, 50, Math.Max(40, Width - 280), 4);
+            Theme.FillRound(g, Theme.Track, bar, 2);
+            if (fr > 0) Theme.FillRound(g, Theme.Accent, new RectangleF(bar.X, bar.Y, bar.Width * fr, bar.Height), 2);
+            string pt = string.IsNullOrEmpty(f.Profile) ? "geen profiel gekoppeld" : "profiel: " + f.Profile;
+            Theme.Label(g, pt + "  \u25BE", Theme.Tiny, hover == 2 ? Theme.Text : Theme.Dim, new Rectangle((int)bar.Right + 10, 42, 150, 20), TextFormatFlags.Left);
+            bool on = f.Loaded && f.Online;
+            Rectangle j = JoinR;
+            Theme.FillRound(g, on ? (hover == 0 ? ControlPaint.Light(Theme.Accent, 0.4f) : Theme.Accent) : Theme.Track, j, 8);
+            Theme.Label(g, "Join", Theme.Bold, on ? Theme.AccentText : Theme.Dim, j, TextFormatFlags.HorizontalCenter);
+            if (hover >= 0)
+            {
+                if (Theme.HasIcons) Theme.Glyph(g, "\uE74D", hover == 1 ? Theme.Danger : Theme.Dim, DelR);
+                else Theme.Label(g, "x", Theme.Bold, hover == 1 ? Theme.Danger : Theme.Dim, DelR, TextFormatFlags.HorizontalCenter);
+            }
+        }
+        Rectangle ProfHit { get { return new Rectangle(Math.Max(74, Width - 280) + 44, 40, 150, 24); } }
+        int Hit(Point p)
+        {
+            if (JoinR.Contains(p)) return 0;
+            if (DelR.Contains(p)) return 1;
+            if (ProfHit.Contains(p)) return 2;
+            return 3;
+        }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int h = Hit(e.Location);
+            Cursor = h <= 2 ? Cursors.Hand : Cursors.Default;
+            if (h != hover) { hover = h; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                int h = Hit(e.Location);
+                if (h == 0) join();
+                else if (h == 1) remove();
+                else if (h == 2) profile();
+            }
+            base.OnMouseClick(e);
+        }
+    }
+
     public class LinkRow : Ctl
     {
         string text; Action click;
@@ -2069,8 +2134,9 @@ namespace CustomCrosshair
             AddNav("\uE8AB", "Positie", 6, 2);
             AddNav("\uE70F", "Eigen", 7, 3);
             AddNav("\uE8FD", "Profielen", 2, 4);
-            AddNav("\uE713", "Instellingen", 3, 5);
-            AddNav("\uE895", "Updates", 4, 6);
+            AddNav("\uE7FC", "FiveM", 8, 5);
+            AddNav("\uE713", "Instellingen", 3, 6);
+            AddNav("\uE895", "Updates", 4, 7);
 
             close = new CloseButton(delegate { Toggle(); });
             close.Location = new Point(ClientSize.Width - 46, 12);
@@ -2087,6 +2153,11 @@ namespace CustomCrosshair
 
             ApplyLayout();
             ShowPage(0);
+
+            Timer ft = new Timer();
+            ft.Interval = 30000;
+            ft.Tick += delegate { if (Visible && page == 8) FiveM.Refresh(this, delegate { content.Invalidate(true); }); };
+            ft.Start();
         }
 
         CloseButton close;
@@ -2298,6 +2369,7 @@ namespace CustomCrosshair
         void ShowPage(int p)
         {
             page = p; tab = 0;
+            if (p == 8) FiveM.Refresh(this, delegate { content.Invalidate(true); });
             foreach (NavItem n in navs) { n.Selected = n.PageIndex == p; n.Invalidate(); }
             BuildTabs();
             BuildContent();
@@ -2415,6 +2487,7 @@ namespace CustomCrosshair
                 case 2: return "Profielen";
                 case 3: return "Instellingen";
                 case 4: return "Updates";
+                case 8: return "FiveM";
                 default: return "";
             }
         }
@@ -2429,6 +2502,7 @@ namespace CustomCrosshair
                 case 2: return "Bewaar je crosshairs en deel ze met vrienden";
                 case 3: return "Toetsen, schermen en hoe de app werkt";
                 case 4: return "Houd de app up-to-date";
+                case 8: return "Je favoriete servers, live spelers en snel joinen";
                 default: return "";
             }
         }
@@ -2468,6 +2542,65 @@ namespace CustomCrosshair
                 vm.Add(new SliderRow("\uE71E", "Puntgrootte", 1, 12, s.DotSize, v => v + " px", v => { s.DotSize = v; Changed(); }));
                 vm.Add(new SliderRow("\uE7B3", "Zichtbaarheid", 10, 100, s.Opacity, v => v + "%", v => { s.Opacity = v; Changed(); }));
                 cards.Add(vm);
+            }
+            else if (page == 8)
+            {
+                Card sv = new Card("\uE7FC", "Mijn servers", colW);
+                if (FiveM.Servers.Count == 0)
+                    sv.Add(new InfoRow("Nog geen servers. Voeg hieronder je eerste server toe.", 22));
+                foreach (FServer f0 in FiveM.Servers)
+                {
+                    FServer f = f0;
+                    ServerRow row = null;
+                    row = sv.Add(new ServerRow(f,
+                        delegate
+                        {
+                            if (s.FivemAutoProfile && f.Profile.Length > 0 && Profiles.Exists(f.Profile)) Program.SwitchProfile(f.Profile);
+                            FiveM.Join(f);
+                        },
+                        delegate
+                        {
+                            if (MessageBox.Show(this, "'" + f.Name + "' uit je lijst halen?", "Custom Crosshair", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                            { FiveM.Servers.Remove(f); FiveM.Save(); Rebuild(); }
+                        },
+                        delegate
+                        {
+                            ContextMenuStrip cms = new ContextMenuStrip();
+                            cms.Font = Theme.Normal;
+                            cms.Items.Add("Geen profiel", null, delegate { f.Profile = ""; FiveM.Save(); row.Invalidate(); });
+                            cms.Items.Add(new ToolStripSeparator());
+                            foreach (string pn0 in Profiles.Names())
+                            {
+                                string pn = pn0;
+                                ToolStripItem it = cms.Items.Add(pn, null, delegate { f.Profile = pn; FiveM.Save(); row.Invalidate(); });
+                                if (pn == f.Profile) ((ToolStripMenuItem)it).Checked = true;
+                            }
+                            cms.Closed += delegate { BeginInvoke(new Action(cms.Dispose)); };
+                            cms.Show(row, new Point(row.Width - 300, 64));
+                        }));
+                }
+                if (FiveM.Servers.Count > 0)
+                    sv.Add(new LinkRow("Vernieuwen  \u21BB", delegate { FiveM.Refresh(this, delegate { content.Invalidate(true); }); }));
+                cards.Add(sv);
+
+                Card add = new Card("\uE710", "Server toevoegen", colW);
+                add.Add(new InfoRow("Plak de join-link van een server, bijv. cfx.re/join/abc123. Je vindt die in FiveM of in de Discord van de server.", 32));
+                InputRow inp = null;
+                Action addIt = delegate
+                {
+                    string code = FiveM.ParseCode(inp.Value);
+                    if (code == null) { MessageBox.Show(this, "Dit is geen geldige join-link. Hij ziet eruit als cfx.re/join/abc123.", "Custom Crosshair"); return; }
+                    foreach (FServer x in FiveM.Servers) if (x.Code == code) { MessageBox.Show(this, "Deze server staat al in je lijst.", "Custom Crosshair"); return; }
+                    FServer nf = new FServer(); nf.Code = code; nf.Name = "cfx.re/join/" + code;
+                    FiveM.Servers.Add(nf); FiveM.Save();
+                    Rebuild();
+                    FiveM.Refresh(this, delegate { content.Invalidate(true); });
+                };
+                inp = add.Add(new InputRow("cfx.re/join/...", addIt));
+                add.Add(new PrimaryButton("Toevoegen", addIt));
+                add.Add(new ToggleRow("\uE8FD", "Crosshair-profiel automatisch wisselen bij joinen", s.FivemAutoProfile, v => { s.FivemAutoProfile = v; s.Save(); }));
+                add.Add(new ButtonRow("\uE74D", "FiveM-cache legen", false, delegate { FiveM.ClearCache(this); }));
+                cards.Add(add);
             }
             else
             {
@@ -2843,10 +2976,155 @@ namespace CustomCrosshair
         }
     }
 
+    // ------------------------------------------------------------------ FiveM (alleen lokaal opgeslagen)
+    public class FServer
+    {
+        public string Code = "", Name = "", Profile = "";
+        public bool Loaded, Online;
+        public int Clients, Max;
+    }
+
+    public static class FiveM
+    {
+        public static List<FServer> Servers = new List<FServer>();
+        static bool busy = false;
+        static string FilePath { get { return Path.Combine(Settings.Dir, "servers.txt"); } }
+
+        public static void Load()
+        {
+            Servers.Clear();
+            try
+            {
+                if (!File.Exists(FilePath)) return;
+                foreach (string line in File.ReadAllLines(FilePath))
+                {
+                    string[] p = line.Split('|');
+                    if (p.Length < 1 || p[0].Trim().Length == 0) continue;
+                    FServer f = new FServer();
+                    f.Code = p[0].Trim();
+                    f.Name = p.Length > 1 ? p[1] : f.Code;
+                    f.Profile = p.Length > 2 ? p[2] : "";
+                    Servers.Add(f);
+                }
+            }
+            catch { }
+        }
+
+        public static void Save()
+        {
+            try
+            {
+                Directory.CreateDirectory(Settings.Dir);
+                List<string> l = new List<string>();
+                foreach (FServer f in Servers) l.Add(f.Code + "|" + f.Name.Replace("|", "") + "|" + f.Profile.Replace("|", ""));
+                File.WriteAllLines(FilePath, l.ToArray());
+            }
+            catch { }
+        }
+
+        public static string ParseCode(string input)
+        {
+            if (input == null) return null;
+            input = input.Trim();
+            System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(input, "join/([A-Za-z0-9]+)");
+            if (m.Success) return m.Groups[1].Value.ToLower();
+            if (System.Text.RegularExpressions.Regex.IsMatch(input, "^[A-Za-z0-9]{4,10}$")) return input.ToLower();
+            return null;
+        }
+
+        static string Clean(string name)
+        {
+            try { name = System.Text.RegularExpressions.Regex.Unescape(name); } catch { }
+            name = System.Text.RegularExpressions.Regex.Replace(name, "\\^[0-9]", "");
+            name = System.Text.RegularExpressions.Regex.Replace(name, "\\s+", " ").Trim();
+            if (name.Length > 40) name = name.Substring(0, 40).Trim() + "...";
+            return name;
+        }
+
+        static void Fetch(FServer f)
+        {
+            try
+            {
+                System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
+                System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create("https://servers-frontend.fivem.net/api/servers/single/" + f.Code);
+                req.UserAgent = "Mozilla/5.0 CustomCrosshair";
+                req.Timeout = 7000; req.ReadWriteTimeout = 7000;
+                string json;
+                using (System.Net.WebResponse r = req.GetResponse())
+                using (StreamReader sr = new StreamReader(r.GetResponseStream())) json = sr.ReadToEnd();
+                System.Text.RegularExpressions.Match c = System.Text.RegularExpressions.Regex.Match(json, "\"clients\"\\s*:\\s*(\\d+)");
+                System.Text.RegularExpressions.Match mx = System.Text.RegularExpressions.Regex.Match(json, "\"(?:sv_maxclients|svMaxclients)\"\\s*:\\s*\"?(\\d+)");
+                System.Text.RegularExpressions.Match pn = System.Text.RegularExpressions.Regex.Match(json, "\"sv_projectName\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                System.Text.RegularExpressions.Match hn = System.Text.RegularExpressions.Regex.Match(json, "\"hostname\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                f.Clients = c.Success ? int.Parse(c.Groups[1].Value) : 0;
+                f.Max = mx.Success ? int.Parse(mx.Groups[1].Value) : 0;
+                string name = pn.Success && pn.Groups[1].Value.Trim().Length > 0 ? pn.Groups[1].Value : (hn.Success ? hn.Groups[1].Value : "");
+                if (name.Length > 0) f.Name = Clean(name);
+                f.Online = c.Success;
+            }
+            catch { f.Online = false; f.Clients = 0; }
+            f.Loaded = true;
+        }
+
+        public static void Refresh(Control ui, Action done)
+        {
+            if (busy) return;
+            busy = true;
+            List<FServer> copy = new List<FServer>(Servers);
+            System.Threading.Thread th = new System.Threading.Thread(delegate()
+            {
+                foreach (FServer f in copy) Fetch(f);
+                try { ui.BeginInvoke(new Action(delegate { busy = false; Save(); done(); })); } catch { busy = false; }
+            });
+            th.IsBackground = true;
+            th.Start();
+        }
+
+        public static void Join(FServer f)
+        {
+            try { System.Diagnostics.Process.Start("fivem://connect/cfx.re/join/" + f.Code); }
+            catch { MessageBox.Show("FiveM kon niet worden gestart. Is FiveM geinstalleerd?", "Custom Crosshair"); }
+        }
+
+        static bool FiveMRunning()
+        {
+            bool running = false;
+            foreach (System.Diagnostics.Process pr in System.Diagnostics.Process.GetProcesses())
+                using (pr)
+                {
+                    try { if (pr.ProcessName.StartsWith("FiveM", StringComparison.OrdinalIgnoreCase)) running = true; } catch { }
+                }
+            return running;
+        }
+
+        public static void ClearCache(IWin32Window owner)
+        {
+            string data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FiveM\\FiveM.app\\data");
+            if (!Directory.Exists(data)) { MessageBox.Show(owner, "FiveM is niet gevonden op de standaardplek.", "Custom Crosshair"); return; }
+            if (FiveMRunning()) { MessageBox.Show(owner, "Sluit FiveM eerst helemaal af en probeer het dan opnieuw.", "Custom Crosshair"); return; }
+            string[] dirs = new string[] { "cache", "server-cache", "server-cache-priv" };
+            long size = 0;
+            foreach (string d in dirs)
+            {
+                string pth = Path.Combine(data, d);
+                try { if (Directory.Exists(pth)) foreach (string f in Directory.GetFiles(pth, "*", SearchOption.AllDirectories)) size += new FileInfo(f).Length; } catch { }
+            }
+            if (MessageBox.Show(owner, "FiveM-cache legen? (" + (size / (1024 * 1024)) + " MB)\n\nFiveM laadt alles daarna opnieuw, de eerste keer joinen duurt dus wat langer.",
+                    "Custom Crosshair", MessageBoxButtons.YesNo) != DialogResult.Yes) return;
+            int failed = 0;
+            foreach (string d in dirs)
+            {
+                string pth = Path.Combine(data, d);
+                try { if (Directory.Exists(pth)) Directory.Delete(pth, true); } catch { failed++; }
+            }
+            MessageBox.Show(owner, failed == 0 ? "De FiveM-cache is geleegd." : "Een deel kon niet worden verwijderd. Is FiveM echt dicht?", "Custom Crosshair");
+        }
+    }
+
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.5.0";
+        public const string Version = "1.6.0";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -3172,6 +3450,7 @@ namespace CustomCrosshair
                 S.Save();
             }
             Theme.Apply(S.MenuTheme, S.Accent);
+            FiveM.Load();
 
             // eerst verplicht updaten als er een nieuwe versie is
             string upUrl, upErr;
