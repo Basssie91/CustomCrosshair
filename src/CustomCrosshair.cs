@@ -1499,6 +1499,7 @@ namespace CustomCrosshair
     {
         string glyph, caption; Action click;
         public bool Selected;
+        public int PageIndex;
         public NavItem(string glyph, string caption, Action click)
         {
             this.glyph = glyph; this.caption = caption; this.click = click;
@@ -1744,6 +1745,7 @@ namespace CustomCrosshair
         void AddNav(string glyph, string caption, int index, int top)
         {
             NavItem n = new NavItem(glyph, caption, delegate { ShowPage(index); });
+            n.PageIndex = index;
             n.Location = new Point(10, top);
             Controls.Add(n);
             navs.Add(n);
@@ -1838,7 +1840,7 @@ namespace CustomCrosshair
         void ShowPage(int p)
         {
             page = p; tab = 0;
-            for (int i = 0; i < navs.Count; i++) { navs[i].Selected = i == p; navs[i].Invalidate(); }
+            foreach (NavItem n in navs) { n.Selected = n.PageIndex == p; n.Invalidate(); }
             BuildTabs();
             BuildContent();
         }
@@ -2218,7 +2220,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.1.0";
+        public const string Version = "1.1.1";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
