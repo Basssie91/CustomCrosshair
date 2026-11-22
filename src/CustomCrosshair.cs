@@ -2134,9 +2134,8 @@ namespace CustomCrosshair
             AddNav("\uE8AB", "Positie", 6, 2);
             AddNav("\uE70F", "Eigen", 7, 3);
             AddNav("\uE8FD", "Profielen", 2, 4);
-            AddNav("\uE7FC", "FiveM", 8, 5);
-            AddNav("\uE713", "Instellingen", 3, 6);
-            AddNav("\uE895", "Updates", 4, 7);
+            AddNav("\uE713", "Instellingen", 3, 5);
+            AddNav("\uE895", "Updates", 4, 6);
 
             close = new CloseButton(delegate { Toggle(); });
             close.Location = new Point(ClientSize.Width - 46, 12);
@@ -3167,7 +3166,7 @@ namespace CustomCrosshair
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.6.1";
+        public const string Version = "1.6.2";
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
