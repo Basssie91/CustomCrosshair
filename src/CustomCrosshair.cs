@@ -2123,6 +2123,59 @@ namespace CustomCrosshair
         }
     }
 
+    public class UpdateNotice : Form
+    {
+        int left = 10;
+        Bitmap logo = AppIcon.MakeBitmap(112);
+        Timer tm;
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+        public UpdateNotice()
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(420, 210);
+            BackColor = Theme.Window;
+            TopMost = true;
+            ShowInTaskbar = true;
+            Text = "Custom Crosshair - update";
+            Icon = AppIcon.MakeIcon(32);
+            DoubleBuffered = true;
+            PrimaryButton now = new PrimaryButton("Nu updaten", delegate { Done(); });
+            now.BackColor = Theme.Window;
+            now.SetBounds(28, 150, 364, 38);
+            Controls.Add(now);
+            tm = new Timer();
+            tm.Interval = 1000;
+            tm.Tick += delegate { left--; Invalidate(); if (left <= 0) Done(); };
+            tm.Start();
+        }
+        void Done() { tm.Stop(); DialogResult = DialogResult.OK; Close(); }
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (DialogResult != DialogResult.OK) { e.Cancel = true; return; }
+            base.OnFormClosing(e);
+        }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { int v = 2; DwmSetWindowAttribute(Handle, 33, ref v, 4); } catch { }
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            using (Pen p = new Pen(Theme.Border)) g.DrawRectangle(p, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(logo, 28, 26, 40, 40);
+            Theme.Label(g, "Update beschikbaar", Theme.Title, Theme.Text, new Rectangle(80, 26, 320, 24), TextFormatFlags.Left);
+            Theme.Label(g, "Custom Crosshair", Theme.Tiny, Theme.Dim, new Rectangle(80, 48, 320, 18), TextFormatFlags.Left);
+            TextRenderer.DrawText(g, "Er is een nieuwe versie. De app wordt over " + left + (left == 1 ? " seconde" : " seconden") + " bijgewerkt en daarna vanzelf opnieuw gestart.",
+                Theme.Normal, new Rectangle(28, 82, 364, 44), Theme.Dim, TextFormatFlags.WordBreak | TextFormatFlags.Left);
+            RectangleF track = new RectangleF(28, 132, 364, 4);
+            Theme.FillRound(g, Theme.Track, track, 2);
+            Theme.FillRound(g, Theme.Accent, new RectangleF(track.X, track.Y, track.Width * (10 - left) / 10f, track.Height), 2);
+        }
+    }
+
     public class SplashForm : Form
     {
         Bitmap logo = AppIcon.MakeBitmap(160);
@@ -3013,7 +3066,7 @@ namespace CustomCrosshair
                 L.Add(new ButtonRow("\uE946", "Wat is er nieuw in deze versie", false, delegate { BeginInvoke(new Action(ShowWhatsNew)); }));
 
                 R = new Card("\uE946", "Hoe werkt het", cw);
-                R.Add(new InfoRow("Updates zijn verplicht. Bij het opstarten en elk half uur kijkt de app of er een update is. Is die er, dan moet je eerst updaten voordat je verder kunt. De app werkt zichzelf bij en start opnieuw op. Je instellingen en profielen blijven bewaard. Zonder internet kun je de app gewoon gebruiken.", 110));
+                R.Add(new InfoRow("Updates zijn verplicht. Bij het opstarten en elke 3 minuten kijkt de app of er een update is. Is die er, dan moet je eerst updaten voordat je verder kunt. De app werkt zichzelf bij en start opnieuw op. Je instellingen en profielen blijven bewaard. Zonder internet kun je de app gewoon gebruiken.", 110));
             }
             else
             {
@@ -3782,8 +3835,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.8.1";
+        public const string Version = "1.8.2";
         public static readonly string[] Notes = new string[] {
+            "Updates worden nu direct en automatisch geinstalleerd, ook als de app open staat",
             "Inloggen met Discord: de app is alleen voor leden met toegang",
             "Je naam wordt automatisch overgenomen van Discord",
             "Uitloggen bij Discord via Instellingen" };
@@ -3803,13 +3857,43 @@ fetch('/cancel');}
                 return sr.ReadToEnd();
         }
 
+        static string etag = null, cachedJson = null;
+
+        // Vraagt GitHub alleen om nieuwe gegevens als er echt iets veranderd is (telt niet mee voor de limiet)
+        static string GetCached(string url)
+        {
+            System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
+            System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
+            req.UserAgent = "CustomCrosshair";
+            req.Timeout = 6000;
+            req.ReadWriteTimeout = 6000;
+            if (etag != null && cachedJson != null) req.Headers.Add("If-None-Match", etag);
+            try
+            {
+                using (System.Net.HttpWebResponse r = (System.Net.HttpWebResponse)req.GetResponse())
+                using (StreamReader sr = new StreamReader(r.GetResponseStream()))
+                {
+                    string body = sr.ReadToEnd();
+                    string et = r.Headers["ETag"];
+                    if (!string.IsNullOrEmpty(et)) { etag = et; cachedJson = body; }
+                    return body;
+                }
+            }
+            catch (System.Net.WebException we)
+            {
+                System.Net.HttpWebResponse resp = we.Response as System.Net.HttpWebResponse;
+                if (resp != null && (int)resp.StatusCode == 304 && cachedJson != null) return cachedJson;
+                throw;
+            }
+        }
+
         // true = er is een nieuwere versie; url = download van de .exe
         public static bool UpdateAvailable(out string url, out string error)
         {
             url = null; error = null;
             try
             {
-                string json = Get("https://api.github.com/repos/" + Repo + "/releases/latest");
+                string json = GetCached("https://api.github.com/repos/" + Repo + "/releases/latest");
                 System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9.]+)\"");
                 System.Text.RegularExpressions.Match u = System.Text.RegularExpressions.Regex.Match(json,
                     "\"browser_download_url\"\\s*:\\s*\"(https://github\\.com/" + Repo + "/releases/download/[^\"]+?\\.exe)\"");
@@ -3830,10 +3914,9 @@ fetch('/cancel');}
         {
             if (forcing) return;
             forcing = true;
-            DialogResult r = MessageBox.Show(
-                "Er is een update voor Custom Crosshair.\n\nJe moet eerst updaten voordat je de app weer kunt gebruiken.\n\nOK = nu updaten\nAnnuleren = afsluiten",
-                "Custom Crosshair - update nodig", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
-            if (r == DialogResult.OK) Install(url);
+            Program.HideForUpdate();
+            using (UpdateNotice n = new UpdateNotice()) n.ShowDialog();
+            Install(url);
             Program.ExitNow();
         }
 
@@ -4243,7 +4326,7 @@ fetch('/cancel');}
             if (S.LastSeenVersion != Updater.Version) { S.LastSeenVersion = Updater.Version; S.Save(); }
             if (tour) menu.BeginInvoke(new Action(menu.StartTour));
             Timer upd = new Timer();
-            upd.Interval = 30 * 60 * 1000;
+            upd.Interval = 3 * 60 * 1000;
             upd.Tick += delegate { Updater.Check(overlay, false); };
             upd.Start();
 
