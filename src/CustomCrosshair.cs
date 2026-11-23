@@ -34,6 +34,7 @@ namespace CustomCrosshair
         public Color DotColor = Color.White;
         public bool Hitmarker = false;             // VIP: flitsje bij klikken (zelf aanzetten)
         public bool GoldMenu = false;              // VIP: gouden menu
+        public bool MenuRgb = false;               // VIP: menukleur loopt door alle kleuren
         public int RgbSpeed = 4;
         public string MonitorName = "";
         public string UserName = "";
@@ -128,6 +129,7 @@ namespace CustomCrosshair
                 case "DotColor": if (ok) DotColor = Color.FromArgb(n); break;
                 case "Hitmarker": Hitmarker = v == "True"; break;
                 case "GoldMenu": GoldMenu = v == "True"; break;
+                case "MenuRgb": MenuRgb = v == "True"; break;
                 case "RgbMode": if (ok) RgbMode = Math.Max(0, Math.Min(3, n)); break;
                 case "RgbSpeed": if (ok) RgbSpeed = Math.Max(1, Math.Min(10, n)); break;
                 case "MonitorName": MonitorName = v; break;
@@ -186,7 +188,7 @@ namespace CustomCrosshair
                 l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
                 l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile);
                 l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("NewsSeenVersion=" + NewsSeenVersion);
-                l.Add("DiscordToken=" + DiscordToken); l.Add("DiscordExpires=" + DiscordExpires); l.Add("DiscordVerifiedUntil=" + DiscordVerifiedUntil); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity); l.Add("GoldMenu=" + GoldMenu);
+                l.Add("DiscordToken=" + DiscordToken); l.Add("DiscordExpires=" + DiscordExpires); l.Add("DiscordVerifiedUntil=" + DiscordVerifiedUntil); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity); l.Add("GoldMenu=" + GoldMenu); l.Add("MenuRgb=" + MenuRgb);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -981,10 +983,22 @@ namespace CustomCrosshair
         public static bool Glass { get { return Style == 4 || Style == 5; } }
         public static readonly Color Gold = Color.FromArgb(245, 190, 40);
 
+        public static readonly Color White = Color.FromArgb(225, 225, 230);
+
+        // Gewone leden: altijd een wit menu. VIP's: eigen kleur, goud of RGB.
         public static void ApplyFor(Settings s)
         {
-            bool gold = s.GoldMenu && DiscordGate.IsVip;
-            Apply(gold ? 5 : 4, gold ? Gold : s.Accent);
+            bool vip = DiscordGate.IsVip;
+            bool gold = s.GoldMenu && vip;
+            Apply(gold ? 5 : 4, gold ? Gold : (vip ? s.Accent : White));
+        }
+
+        // RGB-menu: alleen de accentkleur aanpassen (wordt door een timer aangeroepen)
+        public static void SetAccent(Color c)
+        {
+            Accent = Color.FromArgb(255, c.R, c.G, c.B);
+            int lum = (c.R * 299 + c.G * 587 + c.B * 114) / 1000;
+            AccentText = lum > 150 ? Color.FromArgb(18, 18, 22) : Color.White;
         }
         public static Font Header { get { return Lounge ? HeavySmall : Bold; } }
         public static string Up(string s) { return Lounge ? s.ToUpper() : s; }
@@ -3405,14 +3419,26 @@ namespace CustomCrosshair
 
                 R = new Card("\uE946", "Overig", cw);
                 R.Add(new InfoRow("Alles wordt automatisch opgeslagen. Zet je game op 'Venster zonder rand', anders zie je de crosshair niet.", 48));
-                R.Add(new InfoRow("Menukleur", 18));
-                R.Add(new SwatchRow(AccentPresets, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                 if (DiscordGate.IsVip)
                 {
-                    R.Add(new InfoRow("VIP-menukleuren", 18));
-                    R.Add(new SwatchRow(VipAccents, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
+                    R.Add(new InfoRow("Menukleur (VIP)", 18));
+                    Color[] all = new Color[AccentPresets.Length + VipAccents.Length];
+                    AccentPresets.CopyTo(all, 0);
+                    VipAccents.CopyTo(all, AccentPresets.Length);
+                    R.Add(new SwatchRow(all, () => s.Accent, c => { s.Accent = c; s.MenuRgb = false; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
+                    R.Add(new ColorRow("\uE790", "Eigen menukleur", () => s.Accent, delegate
+                    {
+                        using (ColorDialog cd = new ColorDialog())
+                        {
+                            cd.Color = s.Accent; cd.FullOpen = true;
+                            if (cd.ShowDialog(this) == DialogResult.OK) { s.Accent = cd.Color; s.MenuRgb = false; s.Save(); BeginInvoke(new Action(ApplyTheme)); }
+                        }
+                    }));
+                    R.Add(new ToggleRow("\uE706", "RGB-menu (VIP)", s.MenuRgb, v => { s.MenuRgb = v; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                     R.Add(new ToggleRow("\uE734", "Gouden menu (VIP)", s.GoldMenu, v => { s.GoldMenu = v; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                 }
+                else
+                    R.Add(new InfoRow("Menukleur: wit. VIP's kunnen elke kleur kiezen, ook een RGB-menu dat door alle kleuren loopt.", 32));
                 R.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v => { s.MenuOpacity = v; s.Save(); Opacity = v / 100.0; }));
                 R.Add(new ButtonRow("\uE7BE", "Rondleiding opnieuw bekijken", false, delegate { BeginInvoke(new Action(StartTour)); }));
                 R.Add(new ButtonRow("\uF3B1", "Uitloggen bij Discord", true, delegate
@@ -4250,9 +4276,11 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.12.0";
+        public const string Version = "1.13.0";
         public static readonly string[] Notes = new string[] {
-            "VIP: vier nieuwe VIP-crosshairs (Bliksem, Vlam, Hart en Pijlpunt)" };
+            "Het menu is nu wit voor iedereen",
+            "VIP: elke menukleur kiezen, ook een eigen kleur",
+            "VIP: RGB-menu dat langzaam door alle kleuren loopt" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4573,7 +4601,9 @@ fetch('/cancel');}
             if (S.RgbMode != 0) { S.RgbMode = 0; changed = true; }
             if (S.TwoColor) { S.TwoColor = false; changed = true; }
             if (S.Hitmarker) { S.Hitmarker = false; changed = true; }
-            if (S.GoldMenu) { S.GoldMenu = false; Theme.ApplyFor(S); changed = true; }
+            if (S.GoldMenu) { S.GoldMenu = false; changed = true; }
+            if (S.MenuRgb) { S.MenuRgb = false; changed = true; }
+            Theme.ApplyFor(S);
             if (Array.IndexOf(MenuForm.VipAccents, Color.FromArgb(255, S.Accent.R, S.Accent.G, S.Accent.B)) >= 0) { S.Accent = Color.FromArgb(34, 211, 238); Theme.ApplyFor(S); changed = true; }
             if (changed) S.Save();
             return changed;
@@ -4765,6 +4795,32 @@ fetch('/cancel');}
             overlay.Show();
             overlay.ApplySettings();
             ApplyStreamProof();
+
+            Timer menuRgbTimer = new Timer();
+            menuRgbTimer.Interval = 80;
+            float menuHue = 0f;
+            menuRgbTimer.Tick += delegate
+            {
+                if (!S.MenuRgb || !DiscordGate.IsVip || S.GoldMenu || !menu.Visible) return;
+                menuHue = (menuHue + 2.5f) % 360f;
+                float h = menuHue / 60f;
+                int i = (int)Math.Floor(h) % 6;
+                float f = h - (float)Math.Floor(h);
+                int q = (int)(235 * (1 - f)) + 20, u = (int)(235 * f) + 20;
+                Color c;
+                switch (i)
+                {
+                    case 0: c = Color.FromArgb(255, u, 20); break;
+                    case 1: c = Color.FromArgb(q, 255, 20); break;
+                    case 2: c = Color.FromArgb(20, 255, u); break;
+                    case 3: c = Color.FromArgb(20, q, 255); break;
+                    case 4: c = Color.FromArgb(u, 20, 255); break;
+                    default: c = Color.FromArgb(255, 20, q); break;
+                }
+                Theme.SetAccent(c);
+                menu.Invalidate(true);
+            };
+            menuRgbTimer.Start();
 
             Timer roleTimer = new Timer();
             roleTimer.Interval = 5 * 60 * 1000;
