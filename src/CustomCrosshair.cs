@@ -3924,14 +3924,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.9.0";
+        public const string Version = "1.9.1";
         public static readonly string[] Notes = new string[] {
-            "Je Discord laat zien dat je Custom Crosshair gebruikt",
-            "Updates terwijl je speelt: geen pop-up meer, je krijgt een DM van de bot",
-            "Updates worden direct en automatisch geinstalleerd",
-            "Inloggen met Discord: de app is alleen voor leden met toegang",
-            "Je naam wordt automatisch overgenomen van Discord",
-            "Uitloggen bij Discord via Instellingen" };
+            "Update-berichten verschijnen nu in het update-kanaal op Discord",
+            "Je Discord-status wisselt meteen mee als je van profiel wisselt" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4250,6 +4246,7 @@ fetch('/cancel');}
             S.Save();
             overlay.ApplySettings();
             menu.RefreshAll();
+            DiscordRpc.Refresh(name);
         }
 
         public static void HideForUpdate()
