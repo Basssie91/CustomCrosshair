@@ -1627,22 +1627,57 @@ namespace CustomCrosshair
                 c.Style = style; c.OffsetX = 0; c.OffsetY = 0;
                 float sc = (pr.Height / 2f - 2) / (float)(Math.Max(0, c.Gap) + Math.Max(1, c.Length) + 4);
                 sc = Math.Max(0.5f, Math.Min(1.6f, sc));
-                GraphicsState st = g.Save();
-                g.SetClip(pr);
-                g.TranslateTransform(pr.X + pr.Width / 2f, pr.Y + pr.Height / 2f);
-                g.ScaleTransform(sc, sc);
-                Crosshair.Draw(g, c, 0, 0);
-                g.Restore(st);
-                Theme.Label(g, Settings.StyleNames[style], Theme.Tiny, sel ? Theme.Text : Theme.Dim,
-                            new Rectangle(t.X + 2, t.Bottom - 21, t.Width - 4, 18), TextFormatFlags.HorizontalCenter);
+                bool locked = Settings.IsVipStyle(style) && !DiscordGate.IsVip;
+                if (locked && pr.Width > 4 && pr.Height > 4)
+                {
+                    // wazig voorbeeld: klein tekenen en weer opblazen
+                    using (Bitmap bm = new Bitmap(pr.Width, pr.Height))
+                    {
+                        using (Graphics bg = Graphics.FromImage(bm))
+                        {
+                            bg.Clear(Theme.Window);
+                            bg.TranslateTransform(pr.Width / 2f, pr.Height / 2f);
+                            bg.ScaleTransform(sc, sc);
+                            Crosshair.Draw(bg, c, 0, 0);
+                        }
+                        using (Bitmap small = new Bitmap(bm, Math.Max(1, pr.Width / 6), Math.Max(1, pr.Height / 6)))
+                        {
+                            GraphicsState bs = g.Save();
+                            g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+                            g.PixelOffsetMode = PixelOffsetMode.Half;
+                            g.DrawImage(small, pr);
+                            g.Restore(bs);
+                        }
+                    }
+                }
+                else
+                {
+                    GraphicsState st = g.Save();
+                    g.SetClip(pr);
+                    g.TranslateTransform(pr.X + pr.Width / 2f, pr.Y + pr.Height / 2f);
+                    g.ScaleTransform(sc, sc);
+                    Crosshair.Draw(g, c, 0, 0);
+                    g.Restore(st);
+                }
+                if (!(Settings.IsVipStyle(style) && !DiscordGate.IsVip))
+                    Theme.Label(g, Settings.StyleNames[style], Theme.Tiny, sel ? Theme.Text : Theme.Dim,
+                                new Rectangle(t.X + 2, t.Bottom - 21, t.Width - 4, 18), TextFormatFlags.HorizontalCenter);
                 if (sel) Theme.DrawRound(g, Theme.Accent, t, 7);
                 if (Settings.IsVipStyle(style))
                 {
                     Color gold = Color.FromArgb(245, 190, 40);
                     if (!DiscordGate.IsVip)
                     {
-                        using (SolidBrush dim = new SolidBrush(Color.FromArgb(150, Theme.Window))) g.FillRectangle(dim, t);
-                        if (Theme.HasIcons) Theme.Glyph(g, "\uE72E", gold, new Rectangle(t.X, t.Y + 6, t.Width, t.Height - 30));
+                        // duidelijk slotje: gouden rondje met een donker slot erin
+                        g.SmoothingMode = SmoothingMode.AntiAlias;
+                        float lx = t.X + t.Width / 2f, ly = pr.Y + pr.Height / 2f;
+                        using (SolidBrush sh = new SolidBrush(Color.FromArgb(110, 0, 0, 0))) g.FillEllipse(sh, lx - 15, ly - 13, 30, 30);
+                        using (SolidBrush gb = new SolidBrush(gold)) g.FillEllipse(gb, lx - 14, ly - 14, 28, 28);
+                        Color dark = Color.FromArgb(30, 24, 8);
+                        using (Pen sp = new Pen(dark, 2.2f)) g.DrawArc(sp, lx - 4.5f, ly - 9f, 9f, 10f, 180, 180);
+                        using (SolidBrush lb = new SolidBrush(dark)) g.FillRectangle(lb, lx - 6.5f, ly - 3.5f, 13f, 10f);
+                        using (SolidBrush kh = new SolidBrush(gold)) g.FillEllipse(kh, lx - 1.5f, ly - 0.5f, 3f, 3f);
+                        Theme.Label(g, "VIP", Theme.Small, gold, new Rectangle(t.X, t.Bottom - 21, t.Width, 18), TextFormatFlags.HorizontalCenter);
                     }
                     else using (Pen gp = new Pen(Color.FromArgb(120, gold))) g.DrawRectangle(gp, t.X + 1, t.Y + 1, t.Width - 3, t.Height - 3);
                 }
@@ -4078,13 +4113,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.10.0";
+        public const string Version = "1.10.1";
         public static readonly string[] Notes = new string[] {
-            "VIP: diamant-badge en gouden rand om je naam",
-            "VIP: vier exclusieve crosshairs (Diamant, Kroon, Ster+ en Vizier)",
-            "VIP: geanimeerde crosshairs (ademen, draaien, hartslag)",
-            "VIP: extra RGB-stijlen en menukleuren",
-            "Eigen plaatje als crosshair is nu voor VIP's" };
+            "VIP-crosshairs zijn nu wazig met een duidelijk slotje als je nog geen VIP bent" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
