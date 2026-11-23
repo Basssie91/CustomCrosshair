@@ -51,8 +51,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          $msg = git log -1 --pretty=%s
-          gh release create "v$v" CustomCrosshair.exe --title "Custom Crosshair $v" --notes "$msg"
+          $src = Get-Content src/CustomCrosshair.cs -Raw
+          $m = [regex]::Match($src, 'Notes = new string\[\] \{([\s\S]*?)\};')
+          $lines = @()
+          if ($m.Success) {
+            foreach ($n in [regex]::Matches($m.Groups[1].Value, '"((?:[^"\\]|\\.)*)"')) { $lines += "- " + $n.Groups[1].Value }
+          }
+          if ($lines.Count -eq 0) { $lines += "- " + (git log -1 --pretty=%s) }
+          Set-Content -Path notes.md -Value ($lines -join "`n") -Encoding utf8
+          gh release create "v$v" CustomCrosshair.exe --title "Custom Crosshair $v" --notes-file notes.md
 
       - name: Versie bestaat al
         if: steps.check.outputs.exists == 'true'
