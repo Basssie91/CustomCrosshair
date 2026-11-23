@@ -3832,12 +3832,103 @@ fetch('/cancel');}
         }
     }
 
+    // ------------------------------------------------------------------ Discord-status ("Speelt Custom Crosshair")
+    public static class DiscordRpc
+    {
+        static System.IO.Pipes.NamedPipeClientStream pipe;
+        static readonly object lk = new object();
+        static long startTs = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
+
+        static void WriteFrame(Stream s, int op, string json)
+        {
+            byte[] b = System.Text.Encoding.UTF8.GetBytes(json);
+            byte[] h = new byte[8];
+            BitConverter.GetBytes(op).CopyTo(h, 0);
+            BitConverter.GetBytes(b.Length).CopyTo(h, 4);
+            s.Write(h, 0, 8);
+            s.Write(b, 0, b.Length);
+            s.Flush();
+        }
+
+        static byte[] ReadN(Stream s, int n)
+        {
+            byte[] b = new byte[n];
+            int o = 0;
+            while (o < n) { int r = s.Read(b, o, n - o); if (r <= 0) return null; o += r; }
+            return b;
+        }
+
+        static string ReadFrame(Stream s)
+        {
+            byte[] h = ReadN(s, 8);
+            if (h == null) return null;
+            int len = BitConverter.ToInt32(h, 4);
+            if (len < 0 || len > (1 << 20)) return null;
+            byte[] b = ReadN(s, len);
+            return b == null ? null : System.Text.Encoding.UTF8.GetString(b);
+        }
+
+        static bool Connect()
+        {
+            if (pipe != null && pipe.IsConnected) return true;
+            pipe = null;
+            for (int i = 0; i < 10; i++)
+            {
+                System.IO.Pipes.NamedPipeClientStream p = null;
+                try
+                {
+                    p = new System.IO.Pipes.NamedPipeClientStream(".", "discord-ipc-" + i, System.IO.Pipes.PipeDirection.InOut);
+                    p.Connect(200);
+                    WriteFrame(p, 0, "{\"v\":1,\"client_id\":\"" + DiscordGate.ClientId + "\"}");
+                    string r = ReadFrame(p);
+                    if (r == null || !r.Contains("READY")) { p.Dispose(); continue; }
+                    pipe = p;
+                    return true;
+                }
+                catch { if (p != null) try { p.Dispose(); } catch { } }
+            }
+            return false;
+        }
+
+        static string Esc(string v) { return (v ?? "").Replace("\\", "\\\\").Replace("\"", "\\\""); }
+
+        static void Send(string details, string state)
+        {
+            if (!System.Threading.Monitor.TryEnter(lk, 3000)) return;
+            try
+            {
+                if (!Connect()) return;
+                int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+                string act = "{\"details\":\"" + Esc(details) + "\",\"state\":\"" + Esc(state) + "\",\"timestamps\":{\"start\":" + startTs + "},\"instance\":false}";
+                string json = "{\"cmd\":\"SET_ACTIVITY\",\"args\":{\"pid\":" + pid + ",\"activity\":" + act + "},\"nonce\":\"" + Guid.NewGuid().ToString("N") + "\"}";
+                WriteFrame(pipe, 1, json);
+                ReadFrame(pipe);
+            }
+            catch { try { if (pipe != null) pipe.Dispose(); } catch { } pipe = null; }
+            finally { System.Threading.Monitor.Exit(lk); }
+        }
+
+        // Normale status, op de achtergrond (elke minuut opnieuw, zodat het ook werkt als Discord later start)
+        public static void Refresh(string profile)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate { Send("Crosshair actief", "Profiel: " + profile); });
+        }
+
+        // Laat de bot weten dat de app afsluit wegens een update
+        public static void SetUpdating()
+        {
+            Send("Afgesloten", "Afgesloten wegens update");
+        }
+    }
+
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.8.2";
+        public const string Version = "1.9.0";
         public static readonly string[] Notes = new string[] {
-            "Updates worden nu direct en automatisch geinstalleerd, ook als de app open staat",
+            "Je Discord laat zien dat je Custom Crosshair gebruikt",
+            "Updates terwijl je speelt: geen pop-up meer, je krijgt een DM van de bot",
+            "Updates worden direct en automatisch geinstalleerd",
             "Inloggen met Discord: de app is alleen voor leden met toegang",
             "Je naam wordt automatisch overgenomen van Discord",
             "Uitloggen bij Discord via Instellingen" };
@@ -3920,7 +4011,26 @@ fetch('/cancel');}
             Program.ExitNow();
         }
 
-        static void Install(string url)
+        // Stil bijwerken terwijl de app open staat: geen pop-up, wel Discord-status, daarna afsluiten zonder herstart.
+        public static void SilentUpdate(string url)
+        {
+            if (forcing) return;
+            forcing = true;
+            Program.HideForUpdate();
+            System.Threading.Thread th = new System.Threading.Thread(delegate()
+            {
+                DiscordRpc.SetUpdating();
+                System.Threading.Thread.Sleep(2500);
+                Install(url, true);
+                Program.ExitNow();
+            });
+            th.IsBackground = false;
+            th.Start();
+        }
+
+        static void Install(string url) { Install(url, false); }
+
+        static void Install(string url, bool silent)
         {
             Form wait = new Form();
             wait.FormBorderStyle = FormBorderStyle.None;
@@ -3936,8 +4046,7 @@ fetch('/cancel');}
             l.Dock = DockStyle.Fill;
             l.TextAlign = ContentAlignment.MiddleCenter;
             wait.Controls.Add(l);
-            wait.Show();
-            wait.Refresh();
+            if (!silent) { wait.Show(); wait.Refresh(); }
 
             string tmp = Path.Combine(Path.GetTempPath(), "CustomCrosshair_nieuw.exe");
             string bat = Path.Combine(Path.GetTempPath(), "CustomCrosshair_update.bat");
@@ -3962,7 +4071,7 @@ fetch('/cancel');}
                     "timeout /t 1 /nobreak >nul\r\n" +
                     "goto retry\r\n" +
                     ":ok\r\n" +
-                    "start \"\" \"" + current + "\"\r\n" +
+                    (silent ? "" : "start \"\" \"" + current + "\"\r\n") +
                     ":end\r\n" +
                     "del \"" + tmp + "\" >nul 2>&1\r\n" +
                     "del \"%~f0\" >nul 2>&1\r\n", System.Text.Encoding.Default);
@@ -3975,7 +4084,7 @@ fetch('/cancel');}
             catch (Exception ex)
             {
                 wait.Close();
-                MessageBox.Show("Updaten is mislukt:\n" + ex.Message + "\n\nDe app wordt afgesloten. Probeer het later opnieuw.", "Custom Crosshair");
+                if (!silent) MessageBox.Show("Updaten is mislukt:\n" + ex.Message + "\n\nDe app wordt afgesloten. Probeer het later opnieuw.", "Custom Crosshair");
             }
         }
 
@@ -3993,7 +4102,12 @@ fetch('/cancel');}
                     ui.BeginInvoke(new Action(delegate
                     {
                         busy = false;
-                        if (available) { Program.HideForUpdate(); ForceUpdate(url); return; }
+                        if (available)
+                        {
+                            if (manual) { Program.HideForUpdate(); ForceUpdate(url); }
+                            else SilentUpdate(url);
+                            return;
+                        }
                         if (!manual) return;
                         if (error != null) MessageBox.Show("Kon niet controleren op updates.\n" + error, "Custom Crosshair");
                         else MessageBox.Show("Je app is up-to-date.", "Custom Crosshair");
@@ -4267,6 +4381,12 @@ fetch('/cancel');}
             overlay.Show();
             overlay.ApplySettings();
             ApplyStreamProof();
+
+            DiscordRpc.Refresh(S.ActiveProfile);
+            Timer rpcTimer = new Timer();
+            rpcTimer.Interval = 60000;
+            rpcTimer.Tick += delegate { DiscordRpc.Refresh(S.ActiveProfile); };
+            rpcTimer.Start();
 
             Timer fgTimer = new Timer();
             fgTimer.Interval = 200;

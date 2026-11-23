@@ -9,7 +9,7 @@ $ico  = Join-Path $env:TEMP 'CustomCrosshair.ico'
 if (Test-Path -LiteralPath $out) { Remove-Item -LiteralPath $out -Force }
 
 # Eerst in het geheugen laden om het icoon te kunnen maken
-Add-Type -TypeDefinition $src -ReferencedAssemblies System.Windows.Forms, System.Drawing, System.Security -IgnoreWarnings
+Add-Type -TypeDefinition $src -ReferencedAssemblies System.Windows.Forms, System.Drawing, System.Security, System.Core -IgnoreWarnings
 [CustomCrosshair.AppIcon]::WriteIco($ico)
 
 $cp = New-Object System.CodeDom.Compiler.CompilerParameters
@@ -20,6 +20,7 @@ $cp.CompilerOptions = '/target:winexe /optimize+ /win32icon:"' + $ico + '"'
 [void]$cp.ReferencedAssemblies.Add('System.Drawing.dll')
 [void]$cp.ReferencedAssemblies.Add('System.Windows.Forms.dll')
 [void]$cp.ReferencedAssemblies.Add('System.Security.dll')
+[void]$cp.ReferencedAssemblies.Add('System.Core.dll')
 
 $res = (New-Object Microsoft.CSharp.CSharpCodeProvider).CompileAssemblyFromSource($cp, $src)
 $errs = @($res.Errors | Where-Object { -not $_.IsWarning })
