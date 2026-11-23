@@ -28,6 +28,7 @@ namespace CustomCrosshair
         public bool ShowMenuOnStart = true;
         public bool StreamProof = false;
         public bool Rgb = false;
+        public bool VipGlow = false;               // VIP: zachte gloed om VIP-crosshairs
         public int Anim = 0;      // VIP: 0 geen, 1 ademen, 2 draaien, 3 hartslag
         public int RgbMode = 0;   // VIP: 0 regenboog, 1 zonsondergang, 2 oceaan, 3 goud
         public bool TwoColor = false;              // VIP: punt in een andere kleur
@@ -93,7 +94,7 @@ namespace CustomCrosshair
             Style = d.Style; Color = d.Color; Length = d.Length;
             Thickness = d.Thickness; Gap = d.Gap; DotSize = d.DotSize; Outline = d.Outline;
             Opacity = d.Opacity; OffsetX = d.OffsetX; OffsetY = d.OffsetY;
-            Rgb = d.Rgb; RgbSpeed = d.RgbSpeed; Anim = d.Anim; RgbMode = d.RgbMode;
+            Rgb = d.Rgb; VipGlow = d.VipGlow; RgbSpeed = d.RgbSpeed; Anim = d.Anim; RgbMode = d.RgbMode;
             TwoColor = d.TwoColor; DotColor = d.DotColor; Hitmarker = d.Hitmarker;
             ImageScale = d.ImageScale; PixelSize = d.PixelSize;
         }
@@ -105,7 +106,7 @@ namespace CustomCrosshair
             l.Add("Thickness=" + Thickness); l.Add("Gap=" + Gap); l.Add("DotSize=" + DotSize);
             l.Add("Outline=" + Outline); l.Add("Opacity=" + Opacity);
             l.Add("OffsetX=" + OffsetX); l.Add("OffsetY=" + OffsetY);
-            l.Add("Rgb=" + Rgb); l.Add("RgbSpeed=" + RgbSpeed);
+            l.Add("Rgb=" + Rgb); l.Add("VipGlow=" + VipGlow); l.Add("RgbSpeed=" + RgbSpeed);
             l.Add("Anim=" + Anim); l.Add("RgbMode=" + RgbMode);
             l.Add("TwoColor=" + TwoColor); l.Add("DotColor=" + DotColor.ToArgb()); l.Add("Hitmarker=" + Hitmarker);
             l.Add("ImageFile=" + ImageFile); l.Add("ImageScale=" + ImageScale);
@@ -124,6 +125,7 @@ namespace CustomCrosshair
                 case "ShowMenuOnStart": ShowMenuOnStart = v == "True"; break;
                 case "StreamProof": StreamProof = v == "True"; break;
                 case "Rgb": Rgb = v == "True"; break;
+                case "VipGlow": VipGlow = v == "True"; break;
                 case "Anim": if (ok) Anim = Math.Max(0, Math.Min(3, n)); break;
                 case "TwoColor": TwoColor = v == "True"; break;
                 case "DotColor": if (ok) DotColor = Color.FromArgb(n); break;
@@ -618,7 +620,7 @@ namespace CustomCrosshair
                 dc = Color.FromArgb(255, s.DotColor.R, s.DotColor.G, s.DotColor.B);
                 if (dc.R == 255 && dc.G == 0 && dc.B == 255) dc = Color.FromArgb(254, 0, 255);
             }
-            if (Settings.IsVipStyle(s.Style))
+            if (Settings.IsVipStyle(s.Style) && s.VipGlow)
             {
                 // zachte gloed om VIP-crosshairs
                 Shape(g, s, cx, cy, Color.FromArgb(28, c.R, c.G, c.B), 3, Color.FromArgb(28, dc.R, dc.G, dc.B));
@@ -3531,10 +3533,11 @@ namespace CustomCrosshair
             while (leftPanel.Controls.Count > 0) leftPanel.Controls[0].Dispose();
             leftPanel.BackColor = Theme.Window;
             Card pv = new Card("\uE7B3", "Live voorbeeld", leftPanel.Width);
-            pv.Add(new PreviewBox(s, Math.Max(200, leftPanel.Height - 48 - 3 * 34 - 28), 4));
+            pv.Add(new PreviewBox(s, Math.Max(200, leftPanel.Height - 48 - 4 * 34 - 28), 4));
             pv.Add(new ToggleRow("\uE7E8", "Crosshair aan", s.Enabled, v => { s.Enabled = v; Changed(); }));
             pv.Add(new ToggleRow("\uE739", "Zwarte rand", s.Outline, v => { s.Outline = v; Changed(); }));
             pv.Add(new ToggleRow("\uE706", "RGB-modus", s.Rgb, v => { s.Rgb = v; Changed(); }));
+            pv.Add(new ToggleRow("\uE734", "VIP-gloed", s.VipGlow, v => { s.VipGlow = v; Changed(); }));
             pv.Location = new Point(0, 0);
             leftPanel.Controls.Add(pv);
             leftPanel.ResumeLayout();
@@ -4339,10 +4342,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.15.0";
+        public const string Version = "1.15.1";
         public static readonly string[] Notes = new string[] {
-            "Alle crosshairs hebben nu gladde, strakke randen",
-            "VIP: nieuwe VIP-crosshairs voor shooters: Pro, Fade, Split, Vizier, Caps, Chevron, Glow dot en Ster+" };
+            "VIP: de gloed om VIP-crosshairs staat nu standaard uit en kun je aanzetten met de schakelaar 'VIP-gloed' onder het live voorbeeld" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
