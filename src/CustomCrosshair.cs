@@ -3289,6 +3289,7 @@ namespace CustomCrosshair
                     R.Add(new SwatchRow(VipAccents, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                 }
                 R.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v => { s.MenuOpacity = v; s.Save(); Opacity = v / 100.0; }));
+                R.Add(new ButtonRow("\uE72C", "Discord-rollen vernieuwen", false, delegate { Program.RefreshRoles(true); }));
                 R.Add(new ButtonRow("\uE7BE", "Rondleiding opnieuw bekijken", false, delegate { BeginInvoke(new Action(StartTour)); }));
                 R.Add(new ButtonRow("\uF3B1", "Uitloggen bij Discord", true, delegate
                 {
@@ -3764,7 +3765,7 @@ namespace CustomCrosshair
                 if (resp != null)
                 {
                     int code = (int)resp.StatusCode;
-                    if (code == 404) return Result.NotMember;
+                    if (code == 404) { IsVip = false; return Result.NotMember; }
                     if (code == 401 || code == 403) { s.DiscordToken = ""; s.DiscordExpires = 0; s.Save(); return Result.NeedLogin; }
                     LastError = "Discord gaf foutcode " + code + ".";
                 }
@@ -4113,9 +4114,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.10.1";
+        public const string Version = "1.10.2";
         public static readonly string[] Notes = new string[] {
-            "VIP-crosshairs zijn nu wazig met een duidelijk slotje als je nog geen VIP bent" };
+            "Je Discord-rollen worden elke 5 minuten vanzelf gecontroleerd",
+            "Nieuwe knop: Discord-rollen vernieuwen (Instellingen)" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4426,6 +4428,61 @@ fetch('/cancel');}
             return Screen.PrimaryScreen;
         }
 
+        // Haalt VIP-dingen weg bij wie geen VIP (meer) is
+        static void EnforceVip()
+        {
+            if (DiscordGate.IsVip) return;
+            bool changed = false;
+            if (Settings.IsVipStyle(S.Style) || S.Style == Settings.StyleImage) { S.Style = 2; changed = true; }
+            if (S.Anim != 0) { S.Anim = 0; changed = true; }
+            if (S.RgbMode != 0) { S.RgbMode = 0; changed = true; }
+            if (Array.IndexOf(MenuForm.VipAccents, Color.FromArgb(255, S.Accent.R, S.Accent.G, S.Accent.B)) >= 0) { S.Accent = Color.FromArgb(34, 211, 238); Theme.Apply(S.MenuTheme, S.Accent); changed = true; }
+            if (changed) S.Save();
+        }
+
+        static bool refreshing = false;
+
+        // Rollen opnieuw ophalen bij Discord (elke 5 minuten, of via de knop)
+        public static void RefreshRoles(bool manual)
+        {
+            if (refreshing) return;
+            refreshing = true;
+            bool was = DiscordGate.IsVip;
+            System.Threading.Thread th = new System.Threading.Thread(delegate()
+            {
+                DiscordGate.Result r = DiscordGate.Check(S);
+                try
+                {
+                    overlay.BeginInvoke(new Action(delegate
+                    {
+                        refreshing = false;
+                        bool now = DiscordGate.IsVip;
+                        if (now != was)
+                        {
+                            EnforceVip();
+                            if (menu.Visible) menu.ApplyTheme();
+                            overlay.ApplySettings();
+                            menu.Invalidate();
+                        }
+                        if (manual)
+                        {
+                            string msg;
+                            if (r == DiscordGate.Result.Error) msg = "Kon Discord niet bereiken. Probeer het zo nog eens.";
+                            else if (now && !was) msg = "Je bent nu VIP! De VIP-dingen staan voor je open.";
+                            else if (!now && was) msg = "Je hebt de VIP-rol niet meer.";
+                            else msg = now ? "Je rollen zijn vernieuwd. Je bent VIP." : "Je rollen zijn vernieuwd. Je hebt (nog) geen VIP-rol.";
+                            MessageBox.Show(menu, msg, "Custom Crosshair");
+                        }
+                        else if (now && !was)
+                            MessageBox.Show(menu.Visible ? (IWin32Window)menu : null, "Je bent nu VIP! De VIP-dingen staan voor je open.", "Custom Crosshair");
+                    }));
+                }
+                catch { refreshing = false; }
+            });
+            th.IsBackground = true;
+            th.Start();
+        }
+
         public static void SwitchProfile(string name)
         {
             if (!Profiles.Exists(name)) return;
@@ -4542,15 +4599,7 @@ fetch('/cancel');}
                 using (AccessForm af = new AccessForm(S, gateResult))
                     if (af.ShowDialog() != DialogResult.OK) return;
             }
-            if (!DiscordGate.IsVip)
-            {
-                bool changed = false;
-                if (Settings.IsVipStyle(S.Style) || S.Style == Settings.StyleImage) { S.Style = 2; changed = true; }
-                if (S.Anim != 0) { S.Anim = 0; changed = true; }
-                if (S.RgbMode != 0) { S.RgbMode = 0; changed = true; }
-                if (Array.IndexOf(MenuForm.VipAccents, Color.FromArgb(255, S.Accent.R, S.Accent.G, S.Accent.B)) >= 0) { S.Accent = Color.FromArgb(34, 211, 238); Theme.Apply(S.MenuTheme, S.Accent); changed = true; }
-                if (changed) S.Save();
-            }
+            EnforceVip();
             if (string.IsNullOrEmpty(S.UserName) && !string.IsNullOrEmpty(DiscordGate.DiscordName))
             {
                 S.UserName = DiscordGate.DiscordName.Length > 16 ? DiscordGate.DiscordName.Substring(0, 16) : DiscordGate.DiscordName;
@@ -4575,6 +4624,11 @@ fetch('/cancel');}
             overlay.Show();
             overlay.ApplySettings();
             ApplyStreamProof();
+
+            Timer roleTimer = new Timer();
+            roleTimer.Interval = 5 * 60 * 1000;
+            roleTimer.Tick += delegate { RefreshRoles(false); };
+            roleTimer.Start();
 
             DiscordRpc.Refresh(S.ActiveProfile);
             Timer rpcTimer = new Timer();
