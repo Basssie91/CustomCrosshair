@@ -3554,7 +3554,7 @@ fetch('/cancel');}
 </script></body></html>";
 
         // Opent de browser en wacht tot Discord het inlogtoken teruggeeft (max 3 minuten).
-        public static bool Login(Settings s, Func<bool> cancelled)
+        public static bool Login(Settings s, Func<bool> cancelled, Control ui)
         {
             string state = Guid.NewGuid().ToString("N");
             string redirect = "http://127.0.0.1:" + Port + "/callback";
@@ -3570,7 +3570,7 @@ fetch('/cancel');}
             catch { LastError = "Poort " + Port + " is bezet. Sluit andere programma's en probeer opnieuw."; return false; }
             try
             {
-                System.Diagnostics.Process.Start(url);
+                ui.Invoke(new Action(delegate { Open(url); }));
                 DateTime end = DateTime.Now.AddMinutes(3);
                 while (DateTime.Now < end && !cancelled())
                 {
@@ -3620,7 +3620,16 @@ fetch('/cancel');}
 
         public static void Open(string url)
         {
-            try { System.Diagnostics.Process.Start(url); } catch { }
+            try
+            {
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(url);
+                psi.UseShellExecute = true;
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch
+            {
+                try { System.Diagnostics.Process.Start("explorer.exe", "\"" + url + "\""); } catch { }
+            }
         }
     }
 
@@ -3723,7 +3732,7 @@ fetch('/cancel');}
             DiscordGate.LastError = "";
             System.Threading.Thread th = new System.Threading.Thread(delegate()
             {
-                bool ok = DiscordGate.Login(s, () => closing);
+                bool ok = DiscordGate.Login(s, () => closing, this);
                 DiscordGate.Result r = ok ? DiscordGate.Check(s) : DiscordGate.Result.NeedLogin;
                 try { BeginInvoke(new Action(delegate { Activate(); SetState(r); })); } catch { }
             });
@@ -3773,7 +3782,7 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.8.0";
+        public const string Version = "1.8.1";
         public static readonly string[] Notes = new string[] {
             "Inloggen met Discord: de app is alleen voor leden met toegang",
             "Je naam wordt automatisch overgenomen van Discord",
@@ -4146,7 +4155,6 @@ fetch('/cancel');}
             if (upAvail) { Updater.ForceUpdate(upUrl); return; }
 
             // alleen voor leden van de Discord met de juiste rol
-            if (gateResult == DiscordGate.Result.Error && DiscordGate.RecentlyVerified(S)) gateResult = DiscordGate.Result.Ok;
             if (gateResult != DiscordGate.Result.Ok)
             {
                 using (AccessForm af = new AccessForm(S, gateResult))
