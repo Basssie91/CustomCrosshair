@@ -1806,6 +1806,20 @@ namespace CustomCrosshair
         }
     }
 
+    public class IconButton : Ctl
+    {
+        string glyph; Action click;
+        public IconButton(string glyph, Action click) { this.glyph = glyph; this.click = click; Size = new Size(32, 32); Cursor = Cursors.Hand; }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            if (Hover) Theme.FillRound(g, Theme.Hover, new RectangleF(0, 0, Width - 1, Height - 1), 8);
+            if (Theme.HasIcons) Theme.Glyph(g, glyph, Hover ? Theme.Accent : Theme.Dim, new Rectangle(0, 0, Width, Height));
+            else Theme.Label(g, "R", Theme.Bold, Hover ? Theme.Accent : Theme.Dim, new Rectangle(0, 0, Width, Height), TextFormatFlags.HorizontalCenter);
+        }
+        protected override void OnMouseClick(MouseEventArgs e) { if (e.Button == MouseButtons.Left) click(); base.OnMouseClick(e); }
+    }
+
     public class NewsButton : Ctl
     {
         Func<bool> unseen; Action click;
@@ -2551,6 +2565,7 @@ namespace CustomCrosshair
 
         JumpBar jumpBar;
         NewsButton newsBtn;
+        IconButton rolesBtn;
         Panel contentHost;
 
         void ApplyLayout()
@@ -2600,6 +2615,15 @@ namespace CustomCrosshair
             content.BackColor = Theme.Window;
             close.BackColor = Theme.Window;
             close.Location = new Point(ClientSize.Width - 44, 12);
+            if (rolesBtn == null)
+            {
+                rolesBtn = new IconButton("\uE72C", delegate { Program.RefreshRoles(true); });
+                Controls.Add(rolesBtn);
+                ToolTip tip = new ToolTip();
+                tip.SetToolTip(rolesBtn, "Discord-rollen vernieuwen");
+            }
+            rolesBtn.BackColor = Theme.Window;
+            rolesBtn.Location = new Point(ClientSize.Width - 82, 12);
         }
 
         void AddNav(string glyph, string caption, int index, int top)
@@ -3289,7 +3313,6 @@ namespace CustomCrosshair
                     R.Add(new SwatchRow(VipAccents, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                 }
                 R.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v => { s.MenuOpacity = v; s.Save(); Opacity = v / 100.0; }));
-                R.Add(new ButtonRow("\uE72C", "Discord-rollen vernieuwen", false, delegate { Program.RefreshRoles(true); }));
                 R.Add(new ButtonRow("\uE7BE", "Rondleiding opnieuw bekijken", false, delegate { BeginInvoke(new Action(StartTour)); }));
                 R.Add(new ButtonRow("\uF3B1", "Uitloggen bij Discord", true, delegate
                 {
@@ -4114,10 +4137,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.10.2";
+        public const string Version = "1.10.3";
         public static readonly string[] Notes = new string[] {
-            "Je Discord-rollen worden elke 5 minuten vanzelf gecontroleerd",
-            "Nieuwe knop: Discord-rollen vernieuwen (Instellingen)" };
+            "Discord-rollen vernieuwen staat nu rechtsboven, naast het kruisje" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
