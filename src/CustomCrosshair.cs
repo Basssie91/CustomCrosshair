@@ -564,7 +564,8 @@ namespace CustomCrosshair
         // lockedPreview = alleen voor het wazige voorbeeld op een VIP-tegel
         public static void Draw(Graphics g, Settings s, int cx, int cy, bool lockedPreview)
         {
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
             if (!lockedPreview && !DiscordGate.IsVip && (Settings.IsVipStyle(s.Style) || s.Style == Settings.StyleImage))
             {
                 s = s.Clone();
@@ -617,7 +618,13 @@ namespace CustomCrosshair
                 dc = Color.FromArgb(255, s.DotColor.R, s.DotColor.G, s.DotColor.B);
                 if (dc.R == 255 && dc.G == 0 && dc.B == 255) dc = Color.FromArgb(254, 0, 255);
             }
-            if (s.Outline) Shape(g, s, cx, cy, Color.FromArgb(1, 1, 1), 1);
+            if (Settings.IsVipStyle(s.Style))
+            {
+                // zachte gloed om VIP-crosshairs
+                Shape(g, s, cx, cy, Color.FromArgb(35, c.R, c.G, c.B), 4, Color.FromArgb(35, dc.R, dc.G, dc.B));
+                Shape(g, s, cx, cy, Color.FromArgb(60, c.R, c.G, c.B), 2, Color.FromArgb(60, dc.R, dc.G, dc.B));
+            }
+            if (s.Outline) Shape(g, s, cx, cy, Color.FromArgb(230, 0, 0, 0), 1);
             Shape(g, s, cx, cy, c, 0, dc);
             if (!lockedPreview && s.Hitmarker && DiscordGate.IsVip && HitActive(180)) DrawHit(g, s, cx, cy);
             if (an != null) g.Restore(an);
@@ -645,7 +652,7 @@ namespace CustomCrosshair
             int h = t / 2;
             int st = s.Style;
             bool cross = st == 0 || st == 2 || st == 5 || st == 19 || st == 20;
-            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13 || st == 17 || st == 23 || st == 24 || st == 25 || st == 26 || st == 28 || st == 29 || st == 30;
+            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13 || st == 17 || st == 24 || st == 25 || st == 26 || st == 30;
             bool diamond = st == 16 || st == 17;
             bool dblCircle = st == 18;
             bool brackets = st == 21;
@@ -726,8 +733,11 @@ namespace CustomCrosshair
                 }
                 if (st == 23)
                 {
-                    // Diamant: ruit met vier puntjes naar buiten
-                    int dr = Math.Max(4, gap + 4);
+                    // Diamant: ruit met vier puntjes naar buiten en een gevuld ruitje in het midden
+                    int dr = Math.Max(5, gap + 5);
+                    float ir = Math.Max(1.5f, dr * 0.35f) + grow;
+                    using (SolidBrush ib = new SolidBrush(color))
+                        g.FillPolygon(ib, new PointF[] { new PointF(cx, cy - ir), new PointF(cx + ir, cy), new PointF(cx, cy + ir), new PointF(cx - ir, cy) });
                     g.DrawPolygon(p, new PointF[] { new PointF(cx, cy - dr), new PointF(cx + dr, cy), new PointF(cx, cy + dr), new PointF(cx - dr, cy) });
                     int tk = Math.Max(2, len / 2);
                     g.DrawLine(p, cx, cy - dr - 2, cx, cy - dr - 2 - tk);
@@ -738,11 +748,20 @@ namespace CustomCrosshair
                 if (st == 24)
                 {
                     // Kroon boven het midden
-                    int kr = Math.Max(4, len / 2 + 2);
+                    int kr = Math.Max(6, len / 2 + 4);
                     float by = cy - gap - 3, ty = by - kr;
-                    g.DrawPolygon(p, new PointF[] {
+                    PointF[] crown = new PointF[] {
                         new PointF(cx - kr, by), new PointF(cx - kr, ty), new PointF(cx - kr / 2f, ty + kr * 0.55f),
-                        new PointF(cx, ty - 1), new PointF(cx + kr / 2f, ty + kr * 0.55f), new PointF(cx + kr, ty), new PointF(cx + kr, by) });
+                        new PointF(cx, ty - 1), new PointF(cx + kr / 2f, ty + kr * 0.55f), new PointF(cx + kr, ty), new PointF(cx + kr, by) };
+                    using (SolidBrush cb2 = new SolidBrush(Color.FromArgb(Math.Min(255, (int)color.A), color.R, color.G, color.B)))
+                    {
+                        if (grow > 0) g.DrawPolygon(p, crown);
+                        g.FillPolygon(cb2, crown);
+                        float tr = 1.6f + grow;
+                        g.FillEllipse(cb2, cx - kr - tr, ty - tr - 1, tr * 2, tr * 2);
+                        g.FillEllipse(cb2, cx - tr, ty - 1 - tr - 1, tr * 2, tr * 2);
+                        g.FillEllipse(cb2, cx + kr - tr, ty - tr - 1, tr * 2, tr * 2);
+                    }
                 }
                 if (st == 25)
                 {
@@ -760,7 +779,7 @@ namespace CustomCrosshair
                 }
                 if (st >= 27 && st <= 29)
                 {
-                    float k = Math.Max(3, len / 3f + gap / 4f);
+                    float k = Math.Max(3.5f, len / 2.6f + gap / 4f);
                     PointF[] shape;
                     if (st == 27)
                         shape = new PointF[] {   // Bliksem
@@ -783,7 +802,9 @@ namespace CustomCrosshair
                             shape[hi] = new PointF(cx + (float)(hx * k / 6.5), cy + (float)(hy * k / 6.5) - k * 0.3f);
                         }
                     }
-                    g.DrawPolygon(p, shape);
+                    // gevulde vorm (met rand bij de omlijning/gloed)
+                    if (grow > 0) g.DrawPolygon(p, shape);
+                    using (SolidBrush fb2 = new SolidBrush(color)) g.FillPolygon(fb2, shape);
                 }
                 if (st == 30)
                 {
@@ -851,10 +872,18 @@ namespace CustomCrosshair
     public class Overlay : Form
     {
         Settings s;
-        static readonly Color Key = Color.FromArgb(255, 0, 255);
 
-        [DllImport("user32.dll")]
-        static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [StructLayout(LayoutKind.Sequential)] struct PT { public int x, y; public PT(int x, int y) { this.x = x; this.y = y; } }
+        [StructLayout(LayoutKind.Sequential)] struct SZ { public int cx, cy; public SZ(int cx, int cy) { this.cx = cx; this.cy = cy; } }
+        [StructLayout(LayoutKind.Sequential, Pack = 1)] struct BLEND { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+        [DllImport("user32.dll")] static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref PT pptDst, ref SZ psize, IntPtr hdcSrc, ref PT pprSrc, int crKey, ref BLEND pblend, int dwFlags);
+        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hWnd);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+        [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hDC);
+        [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
+        [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr hObject);
 
         public Overlay(Settings settings)
         {
@@ -864,9 +893,6 @@ namespace CustomCrosshair
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
             Bounds = new Rectangle(0, 0, 400, 400);
-            BackColor = Key;
-            TransparencyKey = Key;
-            DoubleBuffered = true;
             Timer t = new Timer();
             t.Interval = 2500;
             t.Tick += delegate { KeepOnTop(); };
@@ -891,11 +917,48 @@ namespace CustomCrosshair
                 SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0200 | 0x0400);
         }
 
+        // Tekent de crosshair met zachte randen en doorzichtigheid per pixel
+        void Render()
+        {
+            if (!IsHandleCreated || !Visible || Width <= 0 || Height <= 0) return;
+            using (Bitmap bmp = new Bitmap(Width, Height, PixelFormat.Format32bppArgb))
+            {
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    g.Clear(Color.Transparent);
+                    Crosshair.Draw(g, s, Width / 2 + s.OffsetX, Height / 2 + s.OffsetY);
+                }
+                IntPtr screen = GetDC(IntPtr.Zero);
+                IntPtr mem = CreateCompatibleDC(screen);
+                IntPtr hbmp = IntPtr.Zero, old = IntPtr.Zero;
+                try
+                {
+                    hbmp = bmp.GetHbitmap(Color.FromArgb(0));
+                    old = SelectObject(mem, hbmp);
+                    PT dst = new PT(Left, Top), src = new PT(0, 0);
+                    SZ size = new SZ(bmp.Width, bmp.Height);
+                    BLEND bl = new BLEND();
+                    bl.BlendOp = 0; bl.BlendFlags = 0;
+                    bl.SourceConstantAlpha = (byte)(255 * Math.Max(10, Math.Min(100, s.Opacity)) / 100);
+                    bl.AlphaFormat = 1;
+                    UpdateLayeredWindow(Handle, screen, ref dst, ref size, mem, ref src, 0, ref bl, 2);
+                }
+                finally
+                {
+                    if (old != IntPtr.Zero) SelectObject(mem, old);
+                    if (hbmp != IntPtr.Zero) DeleteObject(hbmp);
+                    DeleteDC(mem);
+                    ReleaseDC(IntPtr.Zero, screen);
+                }
+            }
+        }
+
         public void InvalidateCrosshair()
         {
-            if (!Visible) return;
-            Invalidate();
+            Render();
         }
+
+        public new void Invalidate() { Render(); }
 
         public bool AppAllowed = true;
 
@@ -905,18 +968,11 @@ namespace CustomCrosshair
             int size = Crosshair.NeededSize(s);
             Rectangle target = new Rectangle(scr.X + scr.Width / 2 - size / 2, scr.Y + scr.Height / 2 - size / 2, size, size);
             if (Bounds != target) Bounds = target;
-            double op = Math.Max(10, Math.Min(100, s.Opacity)) / 100.0;
-            if (Math.Abs(Opacity - op) > 0.001) Opacity = op;
             bool show = s.Enabled && AppAllowed;
             if (show && !Visible) Show();
             if (!show && Visible) Hide();
-            Invalidate();
+            Render();
             KeepOnTop();
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            Crosshair.Draw(e.Graphics, s, ClientSize.Width / 2 + s.OffsetX, ClientSize.Height / 2 + s.OffsetY);
         }
     }
 
@@ -4276,11 +4332,11 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.13.0";
+        public const string Version = "1.14.0";
         public static readonly string[] Notes = new string[] {
-            "Het menu is nu wit voor iedereen",
-            "VIP: elke menukleur kiezen, ook een eigen kleur",
-            "VIP: RGB-menu dat langzaam door alle kleuren loopt" };
+            "Alle crosshairs hebben nu gladde, strakke randen",
+            "VIP: VIP-crosshairs zijn mooier gemaakt, met een zachte gloed",
+            "VIP: Bliksem, Vlam, Hart en Kroon zijn nu gevulde vormen" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
