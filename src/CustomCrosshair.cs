@@ -64,7 +64,7 @@ namespace CustomCrosshair
             "X", "X + punt", "Vierkant", "Vierkant + punt", "Driehoek", "Pijl", "Hoeken", "Boog",
             "Plaatje", "Getekend",
             "Ruit", "Ruit + punt", "Dubbele cirkel", "Cirkel + kruis", "Ster", "Haakjes", "Vier stippen",
-            "Diamant", "Kroon", "Ster+", "Vizier", "Bliksem", "Vlam", "Hart", "Pijlpunt" };
+            "Pro", "Fade", "Split", "Vizier", "Caps", "Chevron", "Glow dot", "Ster+" };
         public static bool IsVipStyle(int st) { return st >= 23 && st <= 30; }
         public const int StyleImage = 14, StylePixels = 15, Grid = 25;
 
@@ -621,8 +621,7 @@ namespace CustomCrosshair
             if (Settings.IsVipStyle(s.Style))
             {
                 // zachte gloed om VIP-crosshairs
-                Shape(g, s, cx, cy, Color.FromArgb(35, c.R, c.G, c.B), 4, Color.FromArgb(35, dc.R, dc.G, dc.B));
-                Shape(g, s, cx, cy, Color.FromArgb(60, c.R, c.G, c.B), 2, Color.FromArgb(60, dc.R, dc.G, dc.B));
+                Shape(g, s, cx, cy, Color.FromArgb(28, c.R, c.G, c.B), 3, Color.FromArgb(28, dc.R, dc.G, dc.B));
             }
             if (s.Outline) Shape(g, s, cx, cy, Color.FromArgb(230, 0, 0, 0), 1);
             Shape(g, s, cx, cy, c, 0, dc);
@@ -633,6 +632,14 @@ namespace CustomCrosshair
         static void Box(Graphics g, Brush b, int x, int y, int w, int h, int grow)
         {
             g.FillRectangle(b, x - grow, y - grow, w + grow * 2, h + grow * 2);
+        }
+
+        static void FadeBox(Graphics g, Color c, RectangleF r, float angle)
+        {
+            if (r.Width <= 0 || r.Height <= 0) return;
+            RectangleF br = RectangleF.Inflate(r, 1, 1);
+            using (LinearGradientBrush lb = new LinearGradientBrush(br, c, Color.FromArgb(0, c.R, c.G, c.B), angle))
+                g.FillRectangle(lb, r);
         }
 
         static Pen MkPen(Color c, float w)
@@ -652,7 +659,7 @@ namespace CustomCrosshair
             int h = t / 2;
             int st = s.Style;
             bool cross = st == 0 || st == 2 || st == 5 || st == 19 || st == 20;
-            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13 || st == 17 || st == 24 || st == 25 || st == 26 || st == 30;
+            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13 || st == 17 || st == 23 || st == 24 || st == 25 || st == 26 || st == 27 || st == 28 || st == 30;
             bool diamond = st == 16 || st == 17;
             bool dblCircle = st == 18;
             bool brackets = st == 21;
@@ -733,39 +740,78 @@ namespace CustomCrosshair
                 }
                 if (st == 23)
                 {
-                    // Diamant: ruit met vier puntjes naar buiten en een gevuld ruitje in het midden
-                    int dr = Math.Max(5, gap + 5);
-                    float ir = Math.Max(1.5f, dr * 0.35f) + grow;
-                    using (SolidBrush ib = new SolidBrush(color))
-                        g.FillPolygon(ib, new PointF[] { new PointF(cx, cy - ir), new PointF(cx + ir, cy), new PointF(cx, cy + ir), new PointF(cx - ir, cy) });
-                    g.DrawPolygon(p, new PointF[] { new PointF(cx, cy - dr), new PointF(cx + dr, cy), new PointF(cx, cy + dr), new PointF(cx - dr, cy) });
-                    int tk = Math.Max(2, len / 2);
-                    g.DrawLine(p, cx, cy - dr - 2, cx, cy - dr - 2 - tk);
-                    g.DrawLine(p, cx, cy + dr + 2, cx, cy + dr + 2 + tk);
-                    g.DrawLine(p, cx - dr - 2, cy, cx - dr - 2 - tk, cy);
-                    g.DrawLine(p, cx + dr + 2, cy, cx + dr + 2 + tk, cy);
+                    // Pro: superdun kruis
+                    using (SolidBrush pb = new SolidBrush(color))
+                    {
+                        int pl = len + 2, pg = Math.Max(2, gap);
+                        Box(g, pb, cx + pg, cy, pl, 1, grow);
+                        Box(g, pb, cx - pg - pl, cy, pl, 1, grow);
+                        Box(g, pb, cx, cy + pg, 1, pl, grow);
+                        Box(g, pb, cx, cy - pg - pl, 1, pl, grow);
+                    }
                 }
                 if (st == 24)
                 {
-                    // Kroon boven het midden
-                    int kr = Math.Max(6, len / 2 + 4);
-                    float by = cy - gap - 3, ty = by - kr;
-                    PointF[] crown = new PointF[] {
-                        new PointF(cx - kr, by), new PointF(cx - kr, ty), new PointF(cx - kr / 2f, ty + kr * 0.55f),
-                        new PointF(cx, ty - 1), new PointF(cx + kr / 2f, ty + kr * 0.55f), new PointF(cx + kr, ty), new PointF(cx + kr, by) };
-                    using (SolidBrush cb2 = new SolidBrush(Color.FromArgb(Math.Min(255, (int)color.A), color.R, color.G, color.B)))
-                    {
-                        if (grow > 0) g.DrawPolygon(p, crown);
-                        g.FillPolygon(cb2, crown);
-                        float tr = 1.6f + grow;
-                        g.FillEllipse(cb2, cx - kr - tr, ty - tr - 1, tr * 2, tr * 2);
-                        g.FillEllipse(cb2, cx - tr, ty - 1 - tr - 1, tr * 2, tr * 2);
-                        g.FillEllipse(cb2, cx + kr - tr, ty - tr - 1, tr * 2, tr * 2);
-                    }
+                    // Fade: armen die naar buiten vervagen
+                    int h2 = t / 2;
+                    FadeBox(g, color, new RectangleF(cx + gap - grow, cy - h2 - grow, len + 2 * grow, t + 2 * grow), 0f);
+                    FadeBox(g, color, new RectangleF(cx - gap - len - grow, cy - h2 - grow, len + 2 * grow, t + 2 * grow), 180f);
+                    FadeBox(g, color, new RectangleF(cx - h2 - grow, cy + gap - grow, t + 2 * grow, len + 2 * grow), 90f);
+                    FadeBox(g, color, new RectangleF(cx - h2 - grow, cy - gap - len - grow, t + 2 * grow, len + 2 * grow), 270f);
                 }
                 if (st == 25)
                 {
-                    // Ster+: kruis met kortere schuine stralen
+                    // Split: elke arm is twee dunne lijntjes
+                    using (SolidBrush sb2 = new SolidBrush(color))
+                    {
+                        int sa = Math.Max(1, t / 2 + 1);
+                        Box(g, sb2, cx + gap, cy - sa, len, 1, grow); Box(g, sb2, cx + gap, cy + sa, len, 1, grow);
+                        Box(g, sb2, cx - gap - len, cy - sa, len, 1, grow); Box(g, sb2, cx - gap - len, cy + sa, len, 1, grow);
+                        Box(g, sb2, cx - sa, cy + gap, 1, len, grow); Box(g, sb2, cx + sa, cy + gap, 1, len, grow);
+                        Box(g, sb2, cx - sa, cy - gap - len, 1, len, grow); Box(g, sb2, cx + sa, cy - gap - len, 1, len, grow);
+                    }
+                }
+                if (st == 27)
+                {
+                    // Caps: kruis met dwarsstreepjes aan de uiteinden
+                    using (SolidBrush cb3 = new SolidBrush(color))
+                    {
+                        int h3 = t / 2, cap = Math.Max(3, t * 2 + 2), ch = cap / 2;
+                        Box(g, cb3, cx + gap, cy - h3, len, t, grow);
+                        Box(g, cb3, cx - gap - len, cy - h3, len, t, grow);
+                        Box(g, cb3, cx - h3, cy + gap, t, len, grow);
+                        Box(g, cb3, cx - h3, cy - gap - len, t, len, grow);
+                        Box(g, cb3, cx + gap + len - t, cy - ch, t, cap, grow);
+                        Box(g, cb3, cx - gap - len, cy - ch, t, cap, grow);
+                        Box(g, cb3, cx - ch, cy + gap + len - t, cap, t, grow);
+                        Box(g, cb3, cx - ch, cy - gap - len, cap, t, grow);
+                    }
+                }
+                if (st == 28)
+                {
+                    // Chevron: dakje onder de punt
+                    int cw = Math.Max(3, len / 2 + 1);
+                    float top = cy + Math.Max(3, gap + 1);
+                    g.DrawLines(p, new PointF[] { new PointF(cx - cw, top + cw), new PointF(cx, top), new PointF(cx + cw, top + cw) });
+                }
+                if (st == 29)
+                {
+                    // Glow dot: punt met zachte gloed
+                    float dd = Math.Max(2, s.DotSize) + grow * 2;
+                    if (grow == 0)
+                    {
+                        for (int gi = 3; gi >= 1; gi--)
+                        {
+                            float rr = dd * (0.5f + gi * 0.9f);
+                            using (SolidBrush gb2 = new SolidBrush(Color.FromArgb(Math.Min((int)color.A, 30 + (3 - gi) * 25), color.R, color.G, color.B)))
+                                g.FillEllipse(gb2, cx - rr, cy - rr, rr * 2, rr * 2);
+                        }
+                    }
+                    using (SolidBrush db2 = new SolidBrush(color)) g.FillEllipse(db2, cx - dd / 2f, cy - dd / 2f, dd, dd);
+                }
+                if (st == 30)
+                {
+                    // Ster+: kruis met kortere schuine streepjes
                     int sl = Math.Max(2, (int)(len * 0.6f));
                     float d0 = (gap + 1) * 0.7071f, d1 = (gap + 1 + sl) * 0.7071f;
                     g.DrawLine(p, cx + d0, cy + d0, cx + d1, cy + d1);
@@ -776,45 +822,6 @@ namespace CustomCrosshair
                     g.DrawLine(p, cx - gap, cy, cx - gap - len, cy);
                     g.DrawLine(p, cx, cy + gap, cx, cy + gap + len);
                     g.DrawLine(p, cx, cy - gap, cx, cy - gap - len);
-                }
-                if (st >= 27 && st <= 29)
-                {
-                    float k = Math.Max(3.5f, len / 2.6f + gap / 4f);
-                    PointF[] shape;
-                    if (st == 27)
-                        shape = new PointF[] {   // Bliksem
-                            new PointF(cx + 0.4f * k, cy - 3f * k), new PointF(cx - 1.5f * k, cy + 0.3f * k), new PointF(cx - 0.2f * k, cy + 0.3f * k),
-                            new PointF(cx - 0.8f * k, cy + 3f * k), new PointF(cx + 1.5f * k, cy - 0.5f * k), new PointF(cx + 0.2f * k, cy - 0.5f * k) };
-                    else if (st == 28)
-                        shape = new PointF[] {   // Vlam
-                            new PointF(cx, cy - 3.2f * k), new PointF(cx + 0.7f * k, cy - 1.6f * k), new PointF(cx + 1.6f * k, cy - 0.6f * k),
-                            new PointF(cx + 1.7f * k, cy + 1f * k), new PointF(cx + 1f * k, cy + 2.3f * k), new PointF(cx, cy + 2.8f * k),
-                            new PointF(cx - 1f * k, cy + 2.3f * k), new PointF(cx - 1.7f * k, cy + 1f * k), new PointF(cx - 1.4f * k, cy - 0.4f * k),
-                            new PointF(cx - 0.8f * k, cy + 0.2f * k), new PointF(cx - 0.6f * k, cy - 1.4f * k) };
-                    else
-                    {
-                        shape = new PointF[24];   // Hart
-                        for (int hi = 0; hi < 24; hi++)
-                        {
-                            double a = hi * Math.PI * 2 / 24;
-                            double hx = 16 * Math.Pow(Math.Sin(a), 3);
-                            double hy = -(13 * Math.Cos(a) - 5 * Math.Cos(2 * a) - 2 * Math.Cos(3 * a) - Math.Cos(4 * a));
-                            shape[hi] = new PointF(cx + (float)(hx * k / 6.5), cy + (float)(hy * k / 6.5) - k * 0.3f);
-                        }
-                    }
-                    // gevulde vorm (met rand bij de omlijning/gloed)
-                    if (grow > 0) g.DrawPolygon(p, shape);
-                    using (SolidBrush fb2 = new SolidBrush(color)) g.FillPolygon(fb2, shape);
-                }
-                if (st == 30)
-                {
-                    // Pijlpunt: vier pijltjes die naar het midden wijzen
-                    int ah = Math.Max(2, len / 2);
-                    int g0 = Math.Max(2, gap), g1 = g0 + ah;
-                    g.DrawLines(p, new PointF[] { new PointF(cx + g1, cy - ah), new PointF(cx + g0, cy), new PointF(cx + g1, cy + ah) });
-                    g.DrawLines(p, new PointF[] { new PointF(cx - g1, cy - ah), new PointF(cx - g0, cy), new PointF(cx - g1, cy + ah) });
-                    g.DrawLines(p, new PointF[] { new PointF(cx - ah, cy + g1), new PointF(cx, cy + g0), new PointF(cx + ah, cy + g1) });
-                    g.DrawLines(p, new PointF[] { new PointF(cx - ah, cy - g1), new PointF(cx, cy - g0), new PointF(cx + ah, cy - g1) });
                 }
                 if (st == 26)
                 {
@@ -4332,11 +4339,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.14.0";
+        public const string Version = "1.15.0";
         public static readonly string[] Notes = new string[] {
             "Alle crosshairs hebben nu gladde, strakke randen",
-            "VIP: VIP-crosshairs zijn mooier gemaakt, met een zachte gloed",
-            "VIP: Bliksem, Vlam, Hart en Kroon zijn nu gevulde vormen" };
+            "VIP: nieuwe VIP-crosshairs voor shooters: Pro, Fade, Split, Vizier, Caps, Chevron, Glow dot en Ster+" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
