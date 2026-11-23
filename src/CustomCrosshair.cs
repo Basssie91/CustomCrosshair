@@ -528,9 +528,17 @@ namespace CustomCrosshair
             return size;
         }
 
-        public static void Draw(Graphics g, Settings s, int cx, int cy)
+        public static void Draw(Graphics g, Settings s, int cx, int cy) { Draw(g, s, cx, cy, false); }
+
+        // lockedPreview = alleen voor het wazige voorbeeld op een VIP-tegel
+        public static void Draw(Graphics g, Settings s, int cx, int cy, bool lockedPreview)
         {
             g.SmoothingMode = SmoothingMode.None;
+            if (!lockedPreview && !DiscordGate.IsVip && (Settings.IsVipStyle(s.Style) || s.Style == Settings.StyleImage))
+            {
+                s = s.Clone();
+                s.Style = 2;   // geen VIP: gewone crosshair tekenen
+            }
             if (s.Style == Settings.StyleImage)
             {
                 Bitmap img = GetImage(s.ImageFile);
@@ -1638,7 +1646,7 @@ namespace CustomCrosshair
                             bg.Clear(Theme.Window);
                             bg.TranslateTransform(pr.Width / 2f, pr.Height / 2f);
                             bg.ScaleTransform(sc, sc);
-                            Crosshair.Draw(bg, c, 0, 0);
+                            Crosshair.Draw(bg, c, 0, 0, true);
                         }
                         using (Bitmap small = new Bitmap(bm, Math.Max(1, pr.Width / 6), Math.Max(1, pr.Height / 6)))
                         {
@@ -2870,6 +2878,8 @@ namespace CustomCrosshair
         void UseCode(string code)
         {
             if (!ShareCode.Apply(code, s)) { MessageBox.Show(this, "Dit is geen geldige crosshair-code. Een code begint met BC-", "Custom Crosshair"); return; }
+            if (Program.EnforceVip())
+                MessageBox.Show(this, "Deze code bevat VIP-dingen. Die zijn weggelaten, omdat je (nog) geen VIP bent.", "Custom Crosshair");
             Changed();
             Rebuild();
         }
@@ -4137,9 +4147,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.10.3";
+        public const string Version = "1.10.4";
         public static readonly string[] Notes = new string[] {
-            "Discord-rollen vernieuwen staat nu rechtsboven, naast het kruisje" };
+            "VIP-crosshairs werken nu echt alleen nog voor VIP's, ook via codes en oude profielen" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4451,15 +4461,16 @@ fetch('/cancel');}
         }
 
         // Haalt VIP-dingen weg bij wie geen VIP (meer) is
-        static void EnforceVip()
+        public static bool EnforceVip()
         {
-            if (DiscordGate.IsVip) return;
+            if (DiscordGate.IsVip) return false;
             bool changed = false;
             if (Settings.IsVipStyle(S.Style) || S.Style == Settings.StyleImage) { S.Style = 2; changed = true; }
             if (S.Anim != 0) { S.Anim = 0; changed = true; }
             if (S.RgbMode != 0) { S.RgbMode = 0; changed = true; }
             if (Array.IndexOf(MenuForm.VipAccents, Color.FromArgb(255, S.Accent.R, S.Accent.G, S.Accent.B)) >= 0) { S.Accent = Color.FromArgb(34, 211, 238); Theme.Apply(S.MenuTheme, S.Accent); changed = true; }
             if (changed) S.Save();
+            return changed;
         }
 
         static bool refreshing = false;
@@ -4510,6 +4521,7 @@ fetch('/cancel');}
             if (!Profiles.Exists(name)) return;
             Profiles.Load(name, S);
             S.ActiveProfile = name;
+            EnforceVip();
             S.Save();
             overlay.ApplySettings();
             menu.RefreshAll();
