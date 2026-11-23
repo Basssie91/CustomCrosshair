@@ -63,8 +63,8 @@ namespace CustomCrosshair
             "X", "X + punt", "Vierkant", "Vierkant + punt", "Driehoek", "Pijl", "Hoeken", "Boog",
             "Plaatje", "Getekend",
             "Ruit", "Ruit + punt", "Dubbele cirkel", "Cirkel + kruis", "Ster", "Haakjes", "Vier stippen",
-            "Diamant", "Kroon", "Ster+", "Vizier" };
-        public static bool IsVipStyle(int st) { return st >= 23 && st <= 26; }
+            "Diamant", "Kroon", "Ster+", "Vizier", "Bliksem", "Vlam", "Hart", "Pijlpunt" };
+        public static bool IsVipStyle(int st) { return st >= 23 && st <= 30; }
         public const int StyleImage = 14, StylePixels = 15, Grid = 25;
 
         public static string DefaultPixels()
@@ -643,7 +643,7 @@ namespace CustomCrosshair
             int h = t / 2;
             int st = s.Style;
             bool cross = st == 0 || st == 2 || st == 5 || st == 19 || st == 20;
-            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13 || st == 17 || st == 23 || st == 24 || st == 25 || st == 26;
+            bool dot = st == 1 || st == 2 || st == 4 || st == 7 || st == 9 || st == 13 || st == 17 || st == 23 || st == 24 || st == 25 || st == 26 || st == 28 || st == 29 || st == 30;
             bool diamond = st == 16 || st == 17;
             bool dblCircle = st == 18;
             bool brackets = st == 21;
@@ -755,6 +755,43 @@ namespace CustomCrosshair
                     g.DrawLine(p, cx - gap, cy, cx - gap - len, cy);
                     g.DrawLine(p, cx, cy + gap, cx, cy + gap + len);
                     g.DrawLine(p, cx, cy - gap, cx, cy - gap - len);
+                }
+                if (st >= 27 && st <= 29)
+                {
+                    float k = Math.Max(3, len / 3f + gap / 4f);
+                    PointF[] shape;
+                    if (st == 27)
+                        shape = new PointF[] {   // Bliksem
+                            new PointF(cx + 0.4f * k, cy - 3f * k), new PointF(cx - 1.5f * k, cy + 0.3f * k), new PointF(cx - 0.2f * k, cy + 0.3f * k),
+                            new PointF(cx - 0.8f * k, cy + 3f * k), new PointF(cx + 1.5f * k, cy - 0.5f * k), new PointF(cx + 0.2f * k, cy - 0.5f * k) };
+                    else if (st == 28)
+                        shape = new PointF[] {   // Vlam
+                            new PointF(cx, cy - 3.2f * k), new PointF(cx + 0.7f * k, cy - 1.6f * k), new PointF(cx + 1.6f * k, cy - 0.6f * k),
+                            new PointF(cx + 1.7f * k, cy + 1f * k), new PointF(cx + 1f * k, cy + 2.3f * k), new PointF(cx, cy + 2.8f * k),
+                            new PointF(cx - 1f * k, cy + 2.3f * k), new PointF(cx - 1.7f * k, cy + 1f * k), new PointF(cx - 1.4f * k, cy - 0.4f * k),
+                            new PointF(cx - 0.8f * k, cy + 0.2f * k), new PointF(cx - 0.6f * k, cy - 1.4f * k) };
+                    else
+                    {
+                        shape = new PointF[24];   // Hart
+                        for (int hi = 0; hi < 24; hi++)
+                        {
+                            double a = hi * Math.PI * 2 / 24;
+                            double hx = 16 * Math.Pow(Math.Sin(a), 3);
+                            double hy = -(13 * Math.Cos(a) - 5 * Math.Cos(2 * a) - 2 * Math.Cos(3 * a) - Math.Cos(4 * a));
+                            shape[hi] = new PointF(cx + (float)(hx * k / 6.5), cy + (float)(hy * k / 6.5) - k * 0.3f);
+                        }
+                    }
+                    g.DrawPolygon(p, shape);
+                }
+                if (st == 30)
+                {
+                    // Pijlpunt: vier pijltjes die naar het midden wijzen
+                    int ah = Math.Max(2, len / 2);
+                    int g0 = Math.Max(2, gap), g1 = g0 + ah;
+                    g.DrawLines(p, new PointF[] { new PointF(cx + g1, cy - ah), new PointF(cx + g0, cy), new PointF(cx + g1, cy + ah) });
+                    g.DrawLines(p, new PointF[] { new PointF(cx - g1, cy - ah), new PointF(cx - g0, cy), new PointF(cx - g1, cy + ah) });
+                    g.DrawLines(p, new PointF[] { new PointF(cx - ah, cy + g1), new PointF(cx, cy + g0), new PointF(cx + ah, cy + g1) });
+                    g.DrawLines(p, new PointF[] { new PointF(cx - ah, cy - g1), new PointF(cx, cy - g0), new PointF(cx + ah, cy - g1) });
                 }
                 if (st == 26)
                 {
@@ -1620,7 +1657,7 @@ namespace CustomCrosshair
             new int[] { 0, 2, 1, 5, 20, 22 },
             new int[] { 6, 7, 8, 9, 16, 17, 10 },
             new int[] { 11, 12, 21, 13 },
-            new int[] { 23, 24, 25, 26 } };
+            new int[] { 23, 24, 25, 26, 27, 28, 29, 30 } };
         string[] groups; int[][] items; int headH; int minW;
         List<int> tileStyle = new List<int>();
         List<Rectangle> tileRect = new List<Rectangle>();
@@ -4213,11 +4250,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.11.0";
+        public const string Version = "1.12.0";
         public static readonly string[] Notes = new string[] {
-            "VIP: punt in een andere kleur dan de lijnen (Kleur)",
-            "VIP: hitmarker die kort oplicht als je klikt, zelf aan te zetten (Crosshair)",
-            "VIP: gouden menu (Instellingen)" };
+            "VIP: vier nieuwe VIP-crosshairs (Bliksem, Vlam, Hart en Pijlpunt)" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
