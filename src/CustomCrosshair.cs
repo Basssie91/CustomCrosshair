@@ -30,6 +30,10 @@ namespace CustomCrosshair
         public bool Rgb = false;
         public int Anim = 0;      // VIP: 0 geen, 1 ademen, 2 draaien, 3 hartslag
         public int RgbMode = 0;   // VIP: 0 regenboog, 1 zonsondergang, 2 oceaan, 3 goud
+        public bool TwoColor = false;              // VIP: punt in een andere kleur
+        public Color DotColor = Color.White;
+        public bool Hitmarker = false;             // VIP: flitsje bij klikken (zelf aanzetten)
+        public bool GoldMenu = false;              // VIP: gouden menu
         public int RgbSpeed = 4;
         public string MonitorName = "";
         public string UserName = "";
@@ -89,6 +93,7 @@ namespace CustomCrosshair
             Thickness = d.Thickness; Gap = d.Gap; DotSize = d.DotSize; Outline = d.Outline;
             Opacity = d.Opacity; OffsetX = d.OffsetX; OffsetY = d.OffsetY;
             Rgb = d.Rgb; RgbSpeed = d.RgbSpeed; Anim = d.Anim; RgbMode = d.RgbMode;
+            TwoColor = d.TwoColor; DotColor = d.DotColor; Hitmarker = d.Hitmarker;
             ImageScale = d.ImageScale; PixelSize = d.PixelSize;
         }
 
@@ -101,6 +106,7 @@ namespace CustomCrosshair
             l.Add("OffsetX=" + OffsetX); l.Add("OffsetY=" + OffsetY);
             l.Add("Rgb=" + Rgb); l.Add("RgbSpeed=" + RgbSpeed);
             l.Add("Anim=" + Anim); l.Add("RgbMode=" + RgbMode);
+            l.Add("TwoColor=" + TwoColor); l.Add("DotColor=" + DotColor.ToArgb()); l.Add("Hitmarker=" + Hitmarker);
             l.Add("ImageFile=" + ImageFile); l.Add("ImageScale=" + ImageScale);
             l.Add("Pixels=" + Pixels); l.Add("PixelSize=" + PixelSize);
             return l;
@@ -118,6 +124,10 @@ namespace CustomCrosshair
                 case "StreamProof": StreamProof = v == "True"; break;
                 case "Rgb": Rgb = v == "True"; break;
                 case "Anim": if (ok) Anim = Math.Max(0, Math.Min(3, n)); break;
+                case "TwoColor": TwoColor = v == "True"; break;
+                case "DotColor": if (ok) DotColor = Color.FromArgb(n); break;
+                case "Hitmarker": Hitmarker = v == "True"; break;
+                case "GoldMenu": GoldMenu = v == "True"; break;
                 case "RgbMode": if (ok) RgbMode = Math.Max(0, Math.Min(3, n)); break;
                 case "RgbSpeed": if (ok) RgbSpeed = Math.Max(1, Math.Min(10, n)); break;
                 case "MonitorName": MonitorName = v; break;
@@ -176,7 +186,7 @@ namespace CustomCrosshair
                 l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
                 l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile);
                 l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("NewsSeenVersion=" + NewsSeenVersion);
-                l.Add("DiscordToken=" + DiscordToken); l.Add("DiscordExpires=" + DiscordExpires); l.Add("DiscordVerifiedUntil=" + DiscordVerifiedUntil); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
+                l.Add("DiscordToken=" + DiscordToken); l.Add("DiscordExpires=" + DiscordExpires); l.Add("DiscordVerifiedUntil=" + DiscordVerifiedUntil); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity); l.Add("GoldMenu=" + GoldMenu);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -407,6 +417,25 @@ namespace CustomCrosshair
     public static class Crosshair
     {
         public static float Hue = 0f;
+        public static int HitTime = 0;
+        public static bool HitActive(int ms) { if (HitTime == 0) return false; int d = unchecked(Environment.TickCount - HitTime); return d >= 0 && d < ms; }
+
+        static void DrawHit(Graphics g, Settings s, int cx, int cy)
+        {
+            int a = Math.Max(4, s.Gap + 3), b = a + 6;
+            float f = 0.7071f;
+            using (Pen o = new Pen(Color.FromArgb(1, 1, 1), 4f))
+            using (Pen p = new Pen(Color.White, 2f))
+            {
+                foreach (Pen pen in new Pen[] { o, p })
+                {
+                    g.DrawLine(pen, cx + a * f, cy + a * f, cx + b * f, cy + b * f);
+                    g.DrawLine(pen, cx - a * f, cy - a * f, cx - b * f, cy - b * f);
+                    g.DrawLine(pen, cx + a * f, cy - a * f, cx + b * f, cy - b * f);
+                    g.DrawLine(pen, cx - a * f, cy + a * f, cx - b * f, cy + b * f);
+                }
+            }
+        }
 
         static Color Lerp(Color a, Color b, float f)
         {
@@ -580,8 +609,15 @@ namespace CustomCrosshair
                 if (scale != 1f) g.ScaleTransform(scale, scale);
                 cx = 0; cy = 0;
             }
+            Color dc = c;
+            if (s.TwoColor && DiscordGate.IsVip)
+            {
+                dc = Color.FromArgb(255, s.DotColor.R, s.DotColor.G, s.DotColor.B);
+                if (dc.R == 255 && dc.G == 0 && dc.B == 255) dc = Color.FromArgb(254, 0, 255);
+            }
             if (s.Outline) Shape(g, s, cx, cy, Color.FromArgb(1, 1, 1), 1);
-            Shape(g, s, cx, cy, c, 0);
+            Shape(g, s, cx, cy, c, 0, dc);
+            if (!lockedPreview && s.Hitmarker && DiscordGate.IsVip && HitActive(180)) DrawHit(g, s, cx, cy);
             if (an != null) g.Restore(an);
         }
 
@@ -597,7 +633,9 @@ namespace CustomCrosshair
             return p;
         }
 
-        static void Shape(Graphics g, Settings s, int cx, int cy, Color color, int grow)
+        static void Shape(Graphics g, Settings s, int cx, int cy, Color color, int grow) { Shape(g, s, cx, cy, color, grow, color); }
+
+        static void Shape(Graphics g, Settings s, int cx, int cy, Color color, int grow, Color dotColor)
         {
             int t = Math.Max(1, s.Thickness);
             int len = Math.Max(1, s.Length);
@@ -765,7 +803,7 @@ namespace CustomCrosshair
             if (dot)
             {
                 int d = Math.Max(1, s.DotSize);
-                using (SolidBrush b = new SolidBrush(color)) Box(g, b, cx - d / 2, cy - d / 2, d, d, grow);
+                using (SolidBrush b = new SolidBrush(dotColor)) Box(g, b, cx - d / 2, cy - d / 2, d, d, grow);
             }
         }
     }
@@ -881,6 +919,7 @@ namespace CustomCrosshair
         {
             int[][] v;
             if (style == 2) v = new int[][] { new int[]{13,17,28}, new int[]{9,12,21}, new int[]{19,24,38}, new int[]{33,41,62}, new int[]{25,31,48}, new int[]{31,39,60}, new int[]{30,37,56}, new int[]{39,48,72}, new int[]{42,51,76} };
+            else if (style == 5) v = new int[][] { new int[]{28,25,18}, new int[]{21,19,13}, new int[]{44,39,27}, new int[]{86,73,40}, new int[]{54,48,33}, new int[]{63,56,37}, new int[]{50,44,30}, new int[]{63,56,37}, new int[]{80,70,44} };
             else if (style == 4) v = new int[][] { new int[]{27,31,41}, new int[]{22,25,34}, new int[]{40,46,60}, new int[]{60,68,86}, new int[]{49,56,72}, new int[]{57,65,84}, new int[]{47,54,70}, new int[]{57,65,84}, new int[]{66,74,94} };
             else if (style == 3) v = new int[][] { new int[]{0,0,0}, new int[]{0,0,0}, new int[]{11,11,13}, new int[]{30,30,34}, new int[]{20,20,24}, new int[]{26,26,30}, new int[]{24,24,28}, new int[]{34,34,40}, new int[]{38,38,44} };
             else v = new int[][] { new int[]{17,17,20}, new int[]{12,12,14}, new int[]{23,23,27}, new int[]{38,38,44}, new int[]{30,30,36}, new int[]{36,36,42}, new int[]{32,32,38}, new int[]{40,40,47}, new int[]{46,46,52} };
@@ -891,7 +930,7 @@ namespace CustomCrosshair
 
         public static void Apply(int style, Color accent)
         {
-            style = 4;   // Glass is de enige stijl
+            style = style == 5 ? 5 : 4;   // Glass, of Goud voor VIP's
             Style = style;
             Color[] pal = PaletteFor(style);
             Window = pal[0]; Sidebar = pal[1]; Card = pal[2]; Border = pal[3]; Hover = pal[4];
@@ -902,7 +941,14 @@ namespace CustomCrosshair
         }
 
         public static bool Lounge { get { return Style == 1; } }
-        public static bool Glass { get { return Style == 4; } }
+        public static bool Glass { get { return Style == 4 || Style == 5; } }
+        public static readonly Color Gold = Color.FromArgb(245, 190, 40);
+
+        public static void ApplyFor(Settings s)
+        {
+            bool gold = s.GoldMenu && DiscordGate.IsVip;
+            Apply(gold ? 5 : 4, gold ? Gold : s.Accent);
+        }
         public static Font Header { get { return Lounge ? HeavySmall : Bold; } }
         public static string Up(string s) { return Lounge ? s.ToUpper() : s; }
 
@@ -2793,7 +2839,7 @@ namespace CustomCrosshair
 
         public void ApplyTheme()
         {
-            Theme.Apply(s.MenuTheme, s.Accent);
+            Theme.ApplyFor(s);
             Opacity = Math.Max(70, Math.Min(100, s.MenuOpacity)) / 100.0;
             BackColor = Theme.Window;
             content.BackColor = Theme.Window;
@@ -2998,6 +3044,7 @@ namespace CustomCrosshair
                 if (DiscordGate.IsVip)
                 {
                     vip.Add(new ChoiceRow("\uE768", "Animatie", new string[] { "Geen", "Ademen", "Draaien", "Hartslag" }, s.Anim, v => { s.Anim = v; Changed(); }));
+                    vip.Add(new ToggleRow("\uE7C9", "Hitmarker bij klikken", s.Hitmarker, v => { s.Hitmarker = v; Changed(); }));
                     vip.Add(new InfoRow("De VIP-crosshairs (Diamant, Kroon, Ster+ en Vizier) vind je via Alle stijlen bekijken.", 30));
                 }
                 else
@@ -3202,6 +3249,12 @@ namespace CustomCrosshair
                 L.Add(new ToggleRow("\uE706", "RGB-modus", s.Rgb, v => { s.Rgb = v; Changed(); }));
                 if (DiscordGate.IsVip)
                     L.Add(new ChoiceRow("\uE734", "RGB-stijl (VIP)", new string[] { "Regenboog", "Zonsondergang", "Oceaan", "Goud" }, s.RgbMode, v => { s.RgbMode = v; Changed(); }));
+                if (DiscordGate.IsVip)
+                {
+                    L.Add(new ToggleRow("\uE734", "Punt in een andere kleur (VIP)", s.TwoColor, v => { s.TwoColor = v; Changed(); Rebuild(); }));
+                    if (s.TwoColor)
+                        L.Add(new SwatchRow(Presets, () => s.DotColor, c => { s.DotColor = c; Changed(); }));
+                }
                 L.Add(new SliderRow("\uE916", "RGB-snelheid", 1, 10, s.RgbSpeed, v => v.ToString(), v => { s.RgbSpeed = v; Changed(); }));
                 L.Add(new ToggleRow("\uE739", "Zwarte rand", s.Outline, v => { s.Outline = v; Changed(); }));
 
@@ -3321,6 +3374,7 @@ namespace CustomCrosshair
                 {
                     R.Add(new InfoRow("VIP-menukleuren", 18));
                     R.Add(new SwatchRow(VipAccents, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
+                    R.Add(new ToggleRow("\uE734", "Gouden menu (VIP)", s.GoldMenu, v => { s.GoldMenu = v; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                 }
                 R.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v => { s.MenuOpacity = v; s.Save(); Opacity = v / 100.0; }));
                 R.Add(new ButtonRow("\uE7BE", "Rondleiding opnieuw bekijken", false, delegate { BeginInvoke(new Action(StartTour)); }));
@@ -3494,10 +3548,12 @@ namespace CustomCrosshair
             {
                 hookThread = GetCurrentThreadId();
                 hook = SetWindowsHookEx(13, proc, GetModuleHandle(null), 0);
+                mouseHook = SetWindowsHookEx(14, mproc, GetModuleHandle(null), 0);
                 MSG m;
                 while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { }
                 if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
-                hook = IntPtr.Zero;
+                if (mouseHook != IntPtr.Zero) UnhookWindowsHookEx(mouseHook);
+                hook = IntPtr.Zero; mouseHook = IntPtr.Zero;
             });
             th.IsBackground = true;
             th.Priority = System.Threading.ThreadPriority.AboveNormal;
@@ -3508,6 +3564,16 @@ namespace CustomCrosshair
         {
             if (hookThread != 0) PostThreadMessage(hookThread, 0x0012, IntPtr.Zero, IntPtr.Zero);
             hookThread = 0;
+        }
+
+        static HookProc mproc = MouseCallback;
+        static IntPtr mouseHook = IntPtr.Zero;
+        public static Action OnLeftClick;
+
+        static IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && wParam.ToInt32() == 0x0201 && OnLeftClick != null) OnLeftClick();
+            return CallNextHookEx(mouseHook, nCode, wParam, lParam);
         }
 
         static IntPtr Callback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -4147,9 +4213,11 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.10.4";
+        public const string Version = "1.11.0";
         public static readonly string[] Notes = new string[] {
-            "VIP-crosshairs werken nu echt alleen nog voor VIP's, ook via codes en oude profielen" };
+            "VIP: punt in een andere kleur dan de lijnen (Kleur)",
+            "VIP: hitmarker die kort oplicht als je klikt, zelf aan te zetten (Crosshair)",
+            "VIP: gouden menu (Instellingen)" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4468,7 +4536,10 @@ fetch('/cancel');}
             if (Settings.IsVipStyle(S.Style) || S.Style == Settings.StyleImage) { S.Style = 2; changed = true; }
             if (S.Anim != 0) { S.Anim = 0; changed = true; }
             if (S.RgbMode != 0) { S.RgbMode = 0; changed = true; }
-            if (Array.IndexOf(MenuForm.VipAccents, Color.FromArgb(255, S.Accent.R, S.Accent.G, S.Accent.B)) >= 0) { S.Accent = Color.FromArgb(34, 211, 238); Theme.Apply(S.MenuTheme, S.Accent); changed = true; }
+            if (S.TwoColor) { S.TwoColor = false; changed = true; }
+            if (S.Hitmarker) { S.Hitmarker = false; changed = true; }
+            if (S.GoldMenu) { S.GoldMenu = false; Theme.ApplyFor(S); changed = true; }
+            if (Array.IndexOf(MenuForm.VipAccents, Color.FromArgb(255, S.Accent.R, S.Accent.G, S.Accent.B)) >= 0) { S.Accent = Color.FromArgb(34, 211, 238); Theme.ApplyFor(S); changed = true; }
             if (changed) S.Save();
             return changed;
         }
@@ -4584,7 +4655,7 @@ fetch('/cancel');}
                 S.StyleV2 = true;
                 S.Save();
             }
-            Theme.Apply(S.MenuTheme, S.Accent);
+            Theme.ApplyFor(S);
             FiveM.Load();
 
             // eenmalig: iedereen opnieuw laten beginnen (naam + rondleiding)
@@ -4634,6 +4705,7 @@ fetch('/cancel');}
                     if (af.ShowDialog() != DialogResult.OK) return;
             }
             EnforceVip();
+            Theme.ApplyFor(S);
             if (string.IsNullOrEmpty(S.UserName) && !string.IsNullOrEmpty(DiscordGate.DiscordName))
             {
                 S.UserName = DiscordGate.DiscordName.Length > 16 ? DiscordGate.DiscordName.Substring(0, 16) : DiscordGate.DiscordName;
@@ -4679,7 +4751,8 @@ fetch('/cancel');}
             rgbTimer.Interval = 33;
             rgbTimer.Tick += delegate
             {
-                bool anim = S.Anim > 0 && DiscordGate.IsVip;
+                bool hit = S.Hitmarker && DiscordGate.IsVip && Crosshair.HitActive(260);
+                bool anim = (S.Anim > 0 && DiscordGate.IsVip) || hit;
                 if (!S.Rgb && !anim) return;
                 if (S.Rgb) Crosshair.Hue = (Crosshair.Hue + S.RgbSpeed * 0.8f) % 360f;
                 overlay.InvalidateCrosshair();
@@ -4721,6 +4794,10 @@ fetch('/cancel');}
             KeyHook.OnKeyDown = delegate(int vk)
             {
                 overlay.BeginInvoke(new Action(delegate { HandleKey(vk); }));
+            };
+            KeyHook.OnLeftClick = delegate
+            {
+                if (S.Hitmarker && DiscordGate.IsVip) { int now = Environment.TickCount; Crosshair.HitTime = now == 0 ? 1 : now; }
             };
             KeyHook.Start();
 
