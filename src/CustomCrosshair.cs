@@ -41,6 +41,9 @@ namespace CustomCrosshair
         public bool TourDone = false;
         public string LastSeenVersion = "";
         public string NewsSeenVersion = "";
+        public string DiscordToken = "";
+        public long DiscordExpires = 0;
+        public long DiscordVerifiedUntil = 0;
         public int MenuOpacity = 100;
         public string ImageFile = "";
         public int ImageScale = 100;
@@ -123,6 +126,9 @@ namespace CustomCrosshair
                 case "TourDone": TourDone = v == "True"; break;
                 case "LastSeenVersion": LastSeenVersion = v; break;
                 case "NewsSeenVersion": NewsSeenVersion = v; break;
+                case "DiscordToken": DiscordToken = v; break;
+                case "DiscordExpires": { long lv; if (long.TryParse(v, out lv)) DiscordExpires = lv; } break;
+                case "DiscordVerifiedUntil": { long lv; if (long.TryParse(v, out lv)) DiscordVerifiedUntil = lv; } break;
                 case "Accent": if (ok) Accent = Color.FromArgb(255, Color.FromArgb(n)); break;
                 case "MenuOpacity": if (ok) MenuOpacity = Math.Max(70, Math.Min(100, n)); break;
                 case "ImageFile": ImageFile = v; break;
@@ -162,7 +168,8 @@ namespace CustomCrosshair
                 l.Add("ShowMenuOnStart=" + ShowMenuOnStart); l.Add("StreamProof=" + StreamProof);
                 l.Add("ActiveProfile=" + ActiveProfile); l.Add("MonitorName=" + MonitorName); l.Add("UserName=" + UserName); l.Add("AutoUpdate=" + AutoUpdate); l.Add("TargetApp=" + TargetApp);
                 l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile);
-                l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("NewsSeenVersion=" + NewsSeenVersion); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
+                l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("NewsSeenVersion=" + NewsSeenVersion);
+                l.Add("DiscordToken=" + DiscordToken); l.Add("DiscordExpires=" + DiscordExpires); l.Add("DiscordVerifiedUntil=" + DiscordVerifiedUntil); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -3044,6 +3051,11 @@ namespace CustomCrosshair
                 R.Add(new SwatchRow(AccentPresets, () => s.Accent, c => { s.Accent = c; s.Save(); BeginInvoke(new Action(ApplyTheme)); }));
                 R.Add(new SliderRow("\uE7B3", "Menu zichtbaarheid", 70, 100, s.MenuOpacity, v => v + "%", v => { s.MenuOpacity = v; s.Save(); Opacity = v / 100.0; }));
                 R.Add(new ButtonRow("\uE7BE", "Rondleiding opnieuw bekijken", false, delegate { BeginInvoke(new Action(StartTour)); }));
+                R.Add(new ButtonRow("\uF3B1", "Uitloggen bij Discord", true, delegate
+                {
+                    if (MessageBox.Show(this, "Uitloggen bij Discord? De app sluit dan af. Bij het opnieuw openen log je weer in.", "Custom Crosshair", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                    { DiscordGate.Logout(s); Program.Quit(); }
+                }));
                 R.Add(new ButtonRow("\uE77B", "Naam wijzigen", false, delegate
                 {
                     using (NameForm nf = new NameForm(s.UserName))
@@ -3436,14 +3448,336 @@ namespace CustomCrosshair
         }
     }
 
+    // ------------------------------------------------------------------ Discord-login
+    public static class DiscordGate
+    {
+        public const string ClientId = "1569303356315402351";
+        public const string GuildId = "1569304769242075238";
+        public const string RoleId = "1574492909690949712";
+        public const string Invite = "https://discord.gg/DaVBmyWxkD";
+        public const string TicketUrl = "https://discord.com/channels/1569304769242075238/1569313268680368192";
+        const int Port = 53682;
+        public enum Result { Ok, NotMember, NoRole, NeedLogin, Error }
+        public static string DiscordName = null;
+        public static string LastError = "";
+
+        static long Now { get { return (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds; } }
+
+        static string Token(Settings s)
+        {
+            if (string.IsNullOrEmpty(s.DiscordToken) || s.DiscordExpires < Now + 60) return null;
+            try
+            {
+                byte[] enc = Convert.FromBase64String(s.DiscordToken);
+                byte[] dec = System.Security.Cryptography.ProtectedData.Unprotect(enc, null, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+                return System.Text.Encoding.UTF8.GetString(dec);
+            }
+            catch { return null; }
+        }
+
+        static void SaveToken(Settings s, string token, int expiresIn)
+        {
+            byte[] enc = System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(token), null, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            s.DiscordToken = Convert.ToBase64String(enc);
+            s.DiscordExpires = Now + Math.Max(600, expiresIn);
+            s.Save();
+        }
+
+        public static void Logout(Settings s)
+        {
+            s.DiscordToken = ""; s.DiscordExpires = 0; s.DiscordVerifiedUntil = 0;
+            s.Save();
+        }
+
+        public static bool RecentlyVerified(Settings s) { return s.DiscordVerifiedUntil > Now; }
+
+        public static Result Check(Settings s)
+        {
+            string tok = Token(s);
+            if (tok == null) return Result.NeedLogin;
+            try
+            {
+                System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;
+                System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create("https://discord.com/api/v10/users/@me/guilds/" + GuildId + "/member");
+                req.UserAgent = "CustomCrosshair (https://github.com/Basssie91/CustomCrosshair, 1.0)";
+                req.Headers.Add("Authorization", "Bearer " + tok);
+                req.Timeout = 7000; req.ReadWriteTimeout = 7000;
+                string json;
+                using (System.Net.WebResponse r = req.GetResponse())
+                using (StreamReader sr = new StreamReader(r.GetResponseStream())) json = sr.ReadToEnd();
+                System.Text.RegularExpressions.Match gn = System.Text.RegularExpressions.Regex.Match(json, "\"global_name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                System.Text.RegularExpressions.Match un = System.Text.RegularExpressions.Regex.Match(json, "\"username\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                string nm = gn.Success ? gn.Groups[1].Value : (un.Success ? un.Groups[1].Value : null);
+                if (nm != null) { try { nm = System.Text.RegularExpressions.Regex.Unescape(nm); } catch { } DiscordName = nm; }
+                System.Text.RegularExpressions.Match roles = System.Text.RegularExpressions.Regex.Match(json, "\"roles\"\\s*:\\s*\\[([^\\]]*)\\]");
+                bool has = roles.Success && roles.Groups[1].Value.Contains("\"" + RoleId + "\"");
+                if (!has) return Result.NoRole;
+                s.DiscordVerifiedUntil = Now + 7 * 24 * 3600;
+                s.Save();
+                return Result.Ok;
+            }
+            catch (System.Net.WebException we)
+            {
+                System.Net.HttpWebResponse resp = we.Response as System.Net.HttpWebResponse;
+                if (resp != null)
+                {
+                    int code = (int)resp.StatusCode;
+                    if (code == 404) return Result.NotMember;
+                    if (code == 401 || code == 403) { s.DiscordToken = ""; s.DiscordExpires = 0; s.Save(); return Result.NeedLogin; }
+                    LastError = "Discord gaf foutcode " + code + ".";
+                }
+                else LastError = "Geen verbinding met Discord.";
+                return Result.Error;
+            }
+            catch (Exception ex) { LastError = ex.Message; return Result.Error; }
+        }
+
+        static void Send(System.Net.Sockets.NetworkStream ns, string status, string type, string body)
+        {
+            byte[] b = System.Text.Encoding.UTF8.GetBytes(body);
+            string head = "HTTP/1.1 " + status + "\r\nContent-Type: " + type + "; charset=utf-8\r\nContent-Length: " + b.Length + "\r\nConnection: close\r\n\r\n";
+            byte[] h = System.Text.Encoding.ASCII.GetBytes(head);
+            ns.Write(h, 0, h.Length);
+            ns.Write(b, 0, b.Length);
+            ns.Flush();
+        }
+
+        const string Page = @"<!doctype html><html><head><meta charset=""utf-8""><title>Custom Crosshair</title>
+<style>body{background:#1b1f29;color:#e8eaf0;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+div{text-align:center}h1{font-size:24px;margin:0 0 8px}p{color:#8c94a5}</style></head>
+<body><div><h1 id=""t"">Even geduld...</h1><p id=""p""></p></div><script>
+var h=location.hash.substring(1);var q=new URLSearchParams(h);
+if(q.get('access_token')){fetch('/token?'+h).then(function(){document.getElementById('t').textContent='Ingelogd!';
+document.getElementById('p').textContent='Je kunt dit tabblad sluiten en teruggaan naar Custom Crosshair.';});}
+else{document.getElementById('t').textContent='Inloggen geannuleerd';document.getElementById('p').textContent='Ga terug naar Custom Crosshair en probeer het opnieuw.';
+fetch('/cancel');}
+</script></body></html>";
+
+        // Opent de browser en wacht tot Discord het inlogtoken teruggeeft (max 3 minuten).
+        public static bool Login(Settings s, Func<bool> cancelled)
+        {
+            string state = Guid.NewGuid().ToString("N");
+            string redirect = "http://127.0.0.1:" + Port + "/callback";
+            string url = "https://discord.com/oauth2/authorize?client_id=" + ClientId +
+                "&response_type=token&redirect_uri=" + Uri.EscapeDataString(redirect) +
+                "&scope=" + Uri.EscapeDataString("identify guilds.members.read") + "&state=" + state;
+            System.Net.Sockets.TcpListener l = null;
+            try
+            {
+                l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, Port);
+                l.Start();
+            }
+            catch { LastError = "Poort " + Port + " is bezet. Sluit andere programma's en probeer opnieuw."; return false; }
+            try
+            {
+                System.Diagnostics.Process.Start(url);
+                DateTime end = DateTime.Now.AddMinutes(3);
+                while (DateTime.Now < end && !cancelled())
+                {
+                    if (!l.Pending()) { System.Threading.Thread.Sleep(100); continue; }
+                    using (System.Net.Sockets.TcpClient c = l.AcceptTcpClient())
+                    {
+                        c.ReceiveTimeout = 3000;
+                        System.Net.Sockets.NetworkStream ns = c.GetStream();
+                        StreamReader sr = new StreamReader(ns);
+                        string line = sr.ReadLine() ?? "";
+                        string[] parts = line.Split(' ');
+                        string path = parts.Length > 1 ? parts[1] : "/";
+                        if (path.StartsWith("/token?"))
+                        {
+                            Dictionary<string, string> q = new Dictionary<string, string>();
+                            foreach (string kv in path.Substring(7).Split('&'))
+                            {
+                                int i = kv.IndexOf('=');
+                                if (i > 0) q[kv.Substring(0, i)] = Uri.UnescapeDataString(kv.Substring(i + 1));
+                            }
+                            Send(ns, "200 OK", "text/plain", "ok");
+                            string tok, st, ex;
+                            if (q.TryGetValue("access_token", out tok) && q.TryGetValue("state", out st) && st == state)
+                            {
+                                int exp = 604800;
+                                if (q.TryGetValue("expires_in", out ex)) int.TryParse(ex, out exp);
+                                SaveToken(s, tok, exp);
+                                return true;
+                            }
+                        }
+                        else if (path.StartsWith("/cancel"))
+                        {
+                            Send(ns, "200 OK", "text/plain", "ok");
+                            LastError = "Inloggen is geannuleerd.";
+                            return false;
+                        }
+                        else if (path.StartsWith("/callback")) Send(ns, "200 OK", "text/html", Page);
+                        else Send(ns, "404 Not Found", "text/plain", "");
+                    }
+                }
+                LastError = "Inloggen duurde te lang. Probeer het opnieuw.";
+                return false;
+            }
+            catch (Exception e) { LastError = e.Message; return false; }
+            finally { try { l.Stop(); } catch { } }
+        }
+
+        public static void Open(string url)
+        {
+            try { System.Diagnostics.Process.Start(url); } catch { }
+        }
+    }
+
+    public class AccessForm : Form
+    {
+        Settings s; DiscordGate.Result state; bool busy, closing;
+        string title = "", text = "";
+        PrimaryButton main; LinkRow second, quit;
+        Bitmap logo = AppIcon.MakeBitmap(112);
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+        [DllImport("user32.dll")] static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+
+        public AccessForm(Settings s, DiscordGate.Result start)
+        {
+            this.s = s;
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(440, 300);
+            BackColor = Theme.Window;
+            TopMost = true;
+            ShowInTaskbar = true;
+            Text = "Custom Crosshair";
+            Icon = AppIcon.MakeIcon(32);
+            DoubleBuffered = true;
+            main = new PrimaryButton("", delegate { MainClick(); });
+            main.BackColor = Theme.Window;
+            main.SetBounds(30, 196, 380, 40);
+            Controls.Add(main);
+            second = new LinkRow("", delegate { Recheck(); });
+            second.BackColor = Theme.Window;
+            second.SetBounds(30, 248, 200, 26);
+            Controls.Add(second);
+            quit = new LinkRow("Afsluiten", delegate { closing = true; DialogResult = DialogResult.Cancel; Close(); });
+            quit.BackColor = Theme.Window;
+            quit.SetBounds(330, 248, 80, 26);
+            Controls.Add(quit);
+            SetState(start);
+        }
+
+        void SetState(DiscordGate.Result r)
+        {
+            state = r; busy = false;
+            second.Visible = true;
+            switch (r)
+            {
+                case DiscordGate.Result.Ok:
+                    DialogResult = DialogResult.OK; Close(); return;
+                case DiscordGate.Result.NotMember:
+                    title = "Join eerst de Discord";
+                    text = "Custom Crosshair is alleen voor leden van onze Discord-server. Join de server en klik daarna op Opnieuw controleren.";
+                    SetMain("Server joinen"); SetSecond("Opnieuw controleren");
+                    break;
+                case DiscordGate.Result.NoRole:
+                    title = "Je hebt nog geen toegang";
+                    text = "Je zit in de server, maar je hebt de rol voor Custom Crosshair nog niet. Maak een ticket aan om toegang aan te vragen.";
+                    SetMain("Ticket aanmaken"); SetSecond("Opnieuw controleren");
+                    break;
+                case DiscordGate.Result.Error:
+                    title = "Er ging iets mis";
+                    text = DiscordGate.LastError + " Controleer je internet en probeer het opnieuw.";
+                    SetMain("Opnieuw proberen"); SetSecond("Opnieuw inloggen");
+                    break;
+                default:
+                    title = "Inloggen met Discord";
+                    text = "Custom Crosshair is alleen voor leden van onze Discord-server. Log in met Discord om verder te gaan.";
+                    if (DiscordGate.LastError.Length > 0) text += "\n" + DiscordGate.LastError;
+                    SetMain("Inloggen met Discord"); second.Visible = false;
+                    break;
+            }
+            Invalidate();
+        }
+
+        void SetMain(string t2) { Controls.Remove(main); main.Dispose(); main = new PrimaryButton(t2, delegate { MainClick(); }); main.BackColor = Theme.Window; main.SetBounds(30, 196, 380, 40); Controls.Add(main); }
+        void SetSecond(string t2) { Controls.Remove(second); second.Dispose(); second = new LinkRow(t2, delegate { SecondClick(); }); second.BackColor = Theme.Window; second.SetBounds(30, 248, 240, 26); Controls.Add(second); }
+
+        void Busy(string msg) { busy = true; title = msg; text = "Even geduld..."; Invalidate(); }
+
+        void MainClick()
+        {
+            if (busy) return;
+            if (state == DiscordGate.Result.NotMember) { DiscordGate.Open(DiscordGate.Invite); return; }
+            if (state == DiscordGate.Result.NoRole) { DiscordGate.Open(DiscordGate.TicketUrl); return; }
+            if (state == DiscordGate.Result.Error) { Recheck(); return; }
+            DoLogin();
+        }
+
+        void SecondClick()
+        {
+            if (busy) return;
+            if (state == DiscordGate.Result.Error) { DoLogin(); return; }
+            Recheck();
+        }
+
+        void DoLogin()
+        {
+            Busy("Kijk in je browser...");
+            text = "Log daar in met Discord en klik op Autoriseren. Daarna gaat het hier vanzelf verder.";
+            Invalidate();
+            DiscordGate.LastError = "";
+            System.Threading.Thread th = new System.Threading.Thread(delegate()
+            {
+                bool ok = DiscordGate.Login(s, () => closing);
+                DiscordGate.Result r = ok ? DiscordGate.Check(s) : DiscordGate.Result.NeedLogin;
+                try { BeginInvoke(new Action(delegate { Activate(); SetState(r); })); } catch { }
+            });
+            th.IsBackground = true;
+            th.Start();
+        }
+
+        void Recheck()
+        {
+            if (busy) return;
+            Busy("Controleren...");
+            System.Threading.Thread th = new System.Threading.Thread(delegate()
+            {
+                DiscordGate.Result r = DiscordGate.Check(s);
+                try { BeginInvoke(new Action(delegate { SetState(r); })); } catch { }
+            });
+            th.IsBackground = true;
+            th.Start();
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e) { closing = true; base.OnFormClosing(e); }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { int v = 2; DwmSetWindowAttribute(Handle, 33, ref v, 4); } catch { }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            using (Pen p = new Pen(Theme.Border)) g.DrawRectangle(p, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(logo, 30, 28, 40, 40);
+            Theme.Label(g, "Custom Crosshair", Theme.Bold, Theme.Dim, new Rectangle(80, 28, 300, 20), TextFormatFlags.Left);
+            Theme.Label(g, title, Theme.Title, Theme.Text, new Rectangle(80, 46, 340, 24), TextFormatFlags.Left);
+            TextRenderer.DrawText(g, text, Theme.Normal, new Rectangle(30, 96, 380, 90), Theme.Dim, TextFormatFlags.WordBreak | TextFormatFlags.Left);
+        }
+    }
+
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.7.2";
+        public const string Version = "1.8.0";
         public static readonly string[] Notes = new string[] {
-            "Nieuws-knop linksboven in plaats van een pop-up",
-            "Geen witte scrollbalk meer in het menu",
-            "Rondleiding opnieuw bekijken via Instellingen" };
+            "Inloggen met Discord: de app is alleen voor leden met toegang",
+            "Je naam wordt automatisch overgenomen van Discord",
+            "Uitloggen bij Discord via Instellingen" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -3787,9 +4121,11 @@ namespace CustomCrosshair
             DateTime t0 = DateTime.Now;
             string upUrl = null, upErr = null;
             bool upAvail = false, upDone = false;
+            DiscordGate.Result gateResult = DiscordGate.Result.NeedLogin;
             System.Threading.Thread uth = new System.Threading.Thread(delegate()
             {
                 upAvail = Updater.UpdateAvailable(out upUrl, out upErr);
+                if (!upAvail) gateResult = DiscordGate.Check(S);
                 upDone = true;
             });
             uth.IsBackground = true;
@@ -3808,6 +4144,19 @@ namespace CustomCrosshair
             System.Threading.Thread.Sleep(150);
             sp.Close(); sp.Dispose();
             if (upAvail) { Updater.ForceUpdate(upUrl); return; }
+
+            // alleen voor leden van de Discord met de juiste rol
+            if (gateResult == DiscordGate.Result.Error && DiscordGate.RecentlyVerified(S)) gateResult = DiscordGate.Result.Ok;
+            if (gateResult != DiscordGate.Result.Ok)
+            {
+                using (AccessForm af = new AccessForm(S, gateResult))
+                    if (af.ShowDialog() != DialogResult.OK) return;
+            }
+            if (string.IsNullOrEmpty(S.UserName) && !string.IsNullOrEmpty(DiscordGate.DiscordName))
+            {
+                S.UserName = DiscordGate.DiscordName.Length > 16 ? DiscordGate.DiscordName.Substring(0, 16) : DiscordGate.DiscordName;
+                S.Save();
+            }
             if (string.IsNullOrEmpty(S.UserName))
             {
                 using (NameForm nf = new NameForm(""))
