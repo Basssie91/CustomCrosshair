@@ -3467,6 +3467,7 @@ namespace CustomCrosshair
                 {
                     s.MonitorName = screens[v].DeviceName;
                     Changed();
+                    BeginInvoke(new Action(FollowCrosshairScreen));
                 }));
                 L.Add(new AppRow("\uE7FC", "Alleen tonen in", () => s.TargetApp, v => { s.TargetApp = v; Program.ResetForeground(); Changed(); }));
                 L.Add(new InfoRow("Kies je game: de crosshair verdwijnt als je wegtabt. Start de game eerst, dan staat hij in de lijst.", 32));
@@ -3619,6 +3620,17 @@ namespace CustomCrosshair
             using (WhatsNewForm w = new WhatsNewForm()) w.ShowDialog(this);
         }
 
+        // Zet het menu op hetzelfde scherm als de crosshair
+        public void FollowCrosshairScreen()
+        {
+            Screen target = Program.TargetScreen(s);
+            Rectangle wa = target.WorkingArea;
+            Screen cur = Screen.FromRectangle(Bounds);
+            if (cur.DeviceName == target.DeviceName && wa.Contains(Bounds)) return;
+            StartPosition = FormStartPosition.Manual;
+            Location = new Point(wa.Left + Math.Max(0, (wa.Width - Width) / 2), wa.Top + Math.Max(0, (wa.Height - Height) / 2));
+        }
+
         public void Toggle()
         {
             if (Visible)
@@ -3630,7 +3642,9 @@ namespace CustomCrosshair
             else
             {
                 BuildContent();
+                FollowCrosshairScreen();
                 Show();
+                FollowCrosshairScreen();
                 BringToFront();
                 Activate();
             }
@@ -4342,9 +4356,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.15.1";
+        public const string Version = "1.16.0";
         public static readonly string[] Notes = new string[] {
-            "VIP: de gloed om VIP-crosshairs staat nu standaard uit en kun je aanzetten met de schakelaar 'VIP-gloed' onder het live voorbeeld" };
+            "Het menu opent nu altijd op hetzelfde scherm als je crosshair",
+            "Kies je bij Instellingen een ander scherm voor je crosshair, dan verhuist het menu direct mee" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
