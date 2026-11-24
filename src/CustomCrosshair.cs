@@ -28,8 +28,7 @@ namespace CustomCrosshair
         public bool ShowMenuOnStart = true;
         public bool StreamProof = false;
         public bool Rgb = false;
-        public bool VipGlow = false;
-        public bool AutoContrast = false;          // VIP: kleur past zich aan de achtergrond aan               // VIP: zachte gloed om VIP-crosshairs
+        public bool VipGlow = false;               // VIP: zachte gloed om VIP-crosshairs
         public int Anim = 0;      // VIP: 0 geen, 1 ademen, 2 draaien, 3 hartslag
         public int RgbMode = 0;   // VIP: 0 regenboog, 1 zonsondergang, 2 oceaan, 3 goud
         public bool TwoColor = false;              // VIP: punt in een andere kleur
@@ -95,7 +94,7 @@ namespace CustomCrosshair
             Style = d.Style; Color = d.Color; Length = d.Length;
             Thickness = d.Thickness; Gap = d.Gap; DotSize = d.DotSize; Outline = d.Outline;
             Opacity = d.Opacity; OffsetX = d.OffsetX; OffsetY = d.OffsetY;
-            Rgb = d.Rgb; VipGlow = d.VipGlow; AutoContrast = d.AutoContrast; RgbSpeed = d.RgbSpeed; Anim = d.Anim; RgbMode = d.RgbMode;
+            Rgb = d.Rgb; VipGlow = d.VipGlow; RgbSpeed = d.RgbSpeed; Anim = d.Anim; RgbMode = d.RgbMode;
             TwoColor = d.TwoColor; DotColor = d.DotColor; Hitmarker = d.Hitmarker;
             ImageScale = d.ImageScale; PixelSize = d.PixelSize;
         }
@@ -107,7 +106,7 @@ namespace CustomCrosshair
             l.Add("Thickness=" + Thickness); l.Add("Gap=" + Gap); l.Add("DotSize=" + DotSize);
             l.Add("Outline=" + Outline); l.Add("Opacity=" + Opacity);
             l.Add("OffsetX=" + OffsetX); l.Add("OffsetY=" + OffsetY);
-            l.Add("Rgb=" + Rgb); l.Add("VipGlow=" + VipGlow); l.Add("AutoContrast=" + AutoContrast); l.Add("RgbSpeed=" + RgbSpeed);
+            l.Add("Rgb=" + Rgb); l.Add("VipGlow=" + VipGlow); l.Add("RgbSpeed=" + RgbSpeed);
             l.Add("Anim=" + Anim); l.Add("RgbMode=" + RgbMode);
             l.Add("TwoColor=" + TwoColor); l.Add("DotColor=" + DotColor.ToArgb()); l.Add("Hitmarker=" + Hitmarker);
             l.Add("ImageFile=" + ImageFile); l.Add("ImageScale=" + ImageScale);
@@ -127,7 +126,6 @@ namespace CustomCrosshair
                 case "StreamProof": StreamProof = v == "True"; break;
                 case "Rgb": Rgb = v == "True"; break;
                 case "VipGlow": VipGlow = v == "True"; break;
-                case "AutoContrast": AutoContrast = v == "True"; break;
                 case "Anim": if (ok) Anim = Math.Max(0, Math.Min(3, n)); break;
                 case "TwoColor": TwoColor = v == "True"; break;
                 case "DotColor": if (ok) DotColor = Color.FromArgb(n); break;
@@ -455,11 +453,8 @@ namespace CustomCrosshair
             return Lerp(cols[i], cols[(i + 1) % cols.Length], pos - (float)Math.Floor(pos));
         }
 
-        public static Color ContrastColor = Color.Empty;
-
         public static Color ColorFor(Settings s)
         {
-            if (s.AutoContrast && DiscordGate.IsVip && !ContrastColor.IsEmpty) return ContrastColor;
             if (!s.Rgb) return s.Color;
             if (s.RgbMode > 0 && DiscordGate.IsVip)
             {
@@ -3564,13 +3559,11 @@ namespace CustomCrosshair
             while (leftPanel.Controls.Count > 0) leftPanel.Controls[0].Dispose();
             leftPanel.BackColor = Theme.Window;
             Card pv = new Card("\uE7B3", "Live voorbeeld", leftPanel.Width);
-            int rows = DiscordGate.IsVip ? 5 : 4;
+            int rows = 4;
             pv.Add(new PreviewBox(s, Math.Max(200, leftPanel.Height - 48 - rows * 34 - 28), 4));
             pv.Add(new ToggleRow("\uE7E8", "Crosshair aan", s.Enabled, v => { s.Enabled = v; Changed(); }));
             pv.Add(new ToggleRow("\uE739", "Zwarte rand", s.Outline, v => { s.Outline = v; Changed(); }));
-            pv.Add(new ToggleRow("\uE706", "RGB-modus", s.Rgb, v => { s.Rgb = v; if (v) s.AutoContrast = false; Changed(); BeginInvoke(new Action(BuildLeft)); }));
-            if (DiscordGate.IsVip)
-                pv.Add(new ToggleRow("\uE793", "Auto-contrast", s.AutoContrast, v => { s.AutoContrast = v; if (v) s.Rgb = false; Program.ResetContrast(); Changed(); BeginInvoke(new Action(BuildLeft)); }));
+            pv.Add(new ToggleRow("\uE706", "RGB-modus", s.Rgb, v => { s.Rgb = v; Changed(); }));
             pv.Add(new ToggleRow("\uE734", "VIP-gloed", s.VipGlow, v => { s.VipGlow = v; Changed(); }));
             pv.Location = new Point(0, 0);
             leftPanel.Controls.Add(pv);
@@ -4390,11 +4383,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.17.0";
+        public const string Version = "1.17.1";
         public static readonly string[] Notes = new string[] {
-            "Crosshair-code gekopieerd uit Discord? Open het menu en de app vraagt of je hem wilt gebruiken",
-            "Deel je crosshair in Discord met /crosshair",
-            "VIP: Auto-contrast. Je crosshair krijgt vanzelf een kleur die opvalt tegen wat erachter zit. Zet hem aan onder het live voorbeeld" };
+            "Auto-contrast is weggehaald",
+            "Crosshair delen gaat nu via de knop in het crosshairs-kanaal in Discord. Kopieer daar een code en open het menu om hem te gebruiken" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4697,78 +4689,6 @@ fetch('/cancel');}
             }
         }
 
-        // ---- auto-contrast (VIP): kijkt wat er rond de crosshair op je scherm staat
-        static readonly Color[] contrastPicks = new Color[] {
-            Color.FromArgb(255, 40, 40), Color.FromArgb(0, 255, 90), Color.FromArgb(0, 230, 255),
-            Color.FromArgb(255, 235, 0), Color.FromArgb(255, 0, 220), Color.FromArgb(255, 255, 255) };
-        static Bitmap contrastBmp;
-        static int pendingPick = -1, pendingCount = 0;
-
-        public static void ResetContrast() { Crosshair.ContrastColor = Color.Empty; pendingPick = -1; pendingCount = 0; }
-
-        static double ColDist(Color a, Color b)
-        {
-            double rm = (a.R + b.R) / 2.0, dr = a.R - b.R, dg = a.G - b.G, db = a.B - b.B;
-            return Math.Sqrt((2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db);
-        }
-
-        static double Score(Color c, Color[] bg)
-        {
-            // slechtste plek telt het zwaarst, gemiddelde telt mee
-            double min = double.MaxValue, sum = 0;
-            foreach (Color b in bg) { double d = ColDist(c, b); sum += d; if (d < min) min = d; }
-            return min * 0.6 + (sum / bg.Length) * 0.4;
-        }
-
-        static void UpdateContrast()
-        {
-            if (!S.AutoContrast || !DiscordGate.IsVip || !S.Enabled) { if (!Crosshair.ContrastColor.IsEmpty) { ResetContrast(); overlay.InvalidateCrosshair(); } return; }
-            try
-            {
-                Rectangle scr = TargetScreen(S).Bounds;
-                int R = Math.Max(14, Math.Min(140, S.Gap + S.Length * 2 + S.Thickness * 2 + 8));
-                int cx = scr.X + scr.Width / 2 + S.OffsetX, cy = scr.Y + scr.Height / 2 + S.OffsetY;
-                int size = R * 2 + 1;
-                if (contrastBmp == null || contrastBmp.Width != size) { if (contrastBmp != null) contrastBmp.Dispose(); contrastBmp = new Bitmap(size, size); }
-                using (Graphics g = Graphics.FromImage(contrastBmp))
-                    g.CopyFromScreen(cx - R, cy - R, 0, 0, new Size(size, size), CopyPixelOperation.SourceCopy);
-                Color[] bg = new Color[48];
-                int k = 0;
-                for (int ring = 0; ring < 2; ring++)
-                {
-                    int rr = ring == 0 ? R : Math.Max(6, R - 6);
-                    for (int i = 0; i < 24; i++)
-                    {
-                        double a = (i + ring * 0.5) * Math.PI * 2 / 24;
-                        int x = R + (int)Math.Round(rr * Math.Cos(a)), y = R + (int)Math.Round(rr * Math.Sin(a));
-                        x = Math.Max(0, Math.Min(size - 1, x)); y = Math.Max(0, Math.Min(size - 1, y));
-                        bg[k++] = contrastBmp.GetPixel(x, y);
-                    }
-                }
-                Color own = Color.FromArgb(S.Color.R, S.Color.G, S.Color.B);
-                double ownScore = Score(own, bg) * 1.15;   // je eigen kleur heeft een klein voordeel
-                int best = -1; double bestScore = ownScore;
-                for (int i = 0; i < contrastPicks.Length; i++)
-                {
-                    double sc = Score(contrastPicks[i], bg);
-                    if (sc > bestScore) { bestScore = sc; best = i; }
-                }
-                Color cur = Crosshair.ContrastColor.IsEmpty ? own : Crosshair.ContrastColor;
-                Color want = best < 0 ? own : contrastPicks[best];
-                if (want.ToArgb() == cur.ToArgb()) { pendingCount = 0; if (Crosshair.ContrastColor.IsEmpty) { Crosshair.ContrastColor = own; overlay.InvalidateCrosshair(); } return; }
-                // alleen wisselen als het duidelijk beter is en even zo blijft (geen geflikker)
-                if (bestScore < Score(cur, bg) * 1.2) { pendingCount = 0; return; }
-                if (pendingPick == best) pendingCount++; else { pendingPick = best; pendingCount = 1; }
-                if (pendingCount >= 2)
-                {
-                    Crosshair.ContrastColor = want;
-                    pendingCount = 0;
-                    overlay.InvalidateCrosshair();
-                }
-            }
-            catch { }
-        }
-
         public static Screen TargetScreen(Settings s)
         {
             if (!string.IsNullOrEmpty(s.MonitorName))
@@ -4787,7 +4707,6 @@ fetch('/cancel');}
             if (S.RgbMode != 0) { S.RgbMode = 0; changed = true; }
             if (S.TwoColor) { S.TwoColor = false; changed = true; }
             if (S.Hitmarker) { S.Hitmarker = false; changed = true; }
-            if (S.AutoContrast) { S.AutoContrast = false; changed = true; }
             if (S.GoldMenu) { S.GoldMenu = false; changed = true; }
             if (S.MenuRgb) { S.MenuRgb = false; changed = true; }
             Theme.ApplyFor(S);
@@ -5024,11 +4943,6 @@ fetch('/cancel');}
             fgTimer.Interval = 200;
             fgTimer.Tick += delegate { CheckForeground(); };
             fgTimer.Start();
-
-            Timer contrastTimer = new Timer();
-            contrastTimer.Interval = 150;
-            contrastTimer.Tick += delegate { UpdateContrast(); };
-            contrastTimer.Start();
 
             Timer rgbTimer = new Timer();
             rgbTimer.Interval = 33;
