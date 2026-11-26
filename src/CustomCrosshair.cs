@@ -61,7 +61,8 @@ namespace CustomCrosshair
         public bool PerfOn = false;
         public bool PerfFps = true, PerfCpu = true, PerfGpu = true, PerfRam = true, PerfPing = true;
         public bool PerfLoadColors = true;
-        public int PerfCorner = 0;   // 0 linksboven, 1 rechtsboven, 2 linksonder, 3 rechtsonder
+        public int PerfPlace = 1;    // 0 linksboven, 1 midden boven, 2 rechtsboven, 3 linksonder, 4 midden onder, 5 rechtsonder
+        public int PerfLayout = 0;   // 0 naast elkaar (balk), 1 onder elkaar (blok)
         public int PerfSize = 1;     // 0 klein, 1 normaal, 2 groot
         public int PerfBg = 60;      // achtergrond zichtbaarheid in %
         public int PerfKey = 0x78;   // F9
@@ -186,7 +187,8 @@ namespace CustomCrosshair
                 case "PerfRam": PerfRam = v == "True"; break;
                 case "PerfPing": PerfPing = v == "True"; break;
                 case "PerfLoadColors": PerfLoadColors = v == "True"; break;
-                case "PerfCorner": if (ok) PerfCorner = Math.Max(0, Math.Min(3, n)); break;
+                case "PerfPlace": if (ok) PerfPlace = Math.Max(0, Math.Min(5, n)); break;
+                case "PerfLayout": if (ok) PerfLayout = Math.Max(0, Math.Min(1, n)); break;
                 case "PerfSize": if (ok) PerfSize = Math.Max(0, Math.Min(2, n)); break;
                 case "PerfBg": if (ok) PerfBg = Math.Max(0, Math.Min(100, n)); break;
                 case "PerfKey": if (ok && n >= 0) PerfKey = n; break;
@@ -222,7 +224,7 @@ namespace CustomCrosshair
                 l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("NewsSeenVersion=" + NewsSeenVersion);
                 l.Add("DiscordToken=" + DiscordToken); l.Add("DiscordExpires=" + DiscordExpires); l.Add("DiscordVerifiedUntil=" + DiscordVerifiedUntil); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity); l.Add("GoldMenu=" + GoldMenu); l.Add("MenuRgb=" + MenuRgb);
                 l.Add("PerfOn=" + PerfOn); l.Add("PerfFps=" + PerfFps); l.Add("PerfCpu=" + PerfCpu); l.Add("PerfGpu=" + PerfGpu); l.Add("PerfRam=" + PerfRam); l.Add("PerfPing=" + PerfPing);
-                l.Add("PerfLoadColors=" + PerfLoadColors); l.Add("PerfCorner=" + PerfCorner); l.Add("PerfSize=" + PerfSize); l.Add("PerfBg=" + PerfBg); l.Add("PerfKey=" + PerfKey);
+                l.Add("PerfLoadColors=" + PerfLoadColors); l.Add("PerfPlace=" + PerfPlace); l.Add("PerfLayout=" + PerfLayout); l.Add("PerfSize=" + PerfSize); l.Add("PerfBg=" + PerfBg); l.Add("PerfKey=" + PerfKey);
                 l.Add("PerfColor=" + PerfColor.ToArgb()); l.Add("PerfBgColor=" + PerfBgColor.ToArgb()); l.Add("PerfRgb=" + PerfRgb); l.Add("PerfGold=" + PerfGold); l.Add("PerfFree=" + PerfFree); l.Add("PerfX=" + PerfX); l.Add("PerfY=" + PerfY);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
@@ -3353,8 +3355,9 @@ namespace CustomCrosshair
                 if (k == s.MenuKey) { MessageBox.Show(this, "Die toets gebruik je al voor het menu. Kies een andere toets.", "Custom Crosshair"); Rebuild(); return; }
                 s.PerfKey = k; s.Save();
             }));
+            P.Add(new ChoiceRow("\uE8A9", "Indeling", new string[] { "Naast elkaar", "Onder elkaar" }, s.PerfLayout, v => { s.PerfLayout = v; s.Save(); Program.ApplyPerf(); }));
             if (!(DiscordGate.IsVip && s.PerfFree))
-                P.Add(new ChoiceRow("\uE7F4", "Plek", new string[] { "Linksboven", "Rechtsboven", "Linksonder", "Rechtsonder" }, s.PerfCorner, v => { s.PerfCorner = v; s.Save(); Program.ApplyPerf(); }));
+                P.Add(new ChoiceRow("\uE7F4", "Plek", new string[] { "Linksboven", "Midden boven", "Rechtsboven", "Linksonder", "Midden onder", "Rechtsonder" }, s.PerfPlace, v => { s.PerfPlace = v; s.Save(); Program.ApplyPerf(); }));
             P.Add(new ChoiceRow("\uE8E9", "Grootte", new string[] { "Klein", "Normaal", "Groot" }, s.PerfSize, v => { s.PerfSize = v; s.Save(); Program.ApplyPerf(); }));
             P.Add(new SliderRow("\uE7B3", "Achtergrond", 0, 100, s.PerfBg, v => v + "%", v => { s.PerfBg = v; s.Save(); Program.ApplyPerf(); }));
             P.Add(new InfoRow("Wat wil je zien?", 18));
@@ -4508,10 +4511,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.19.0";
+        public const string Version = "1.19.1";
         public static readonly string[] Notes = new string[] {
-            "Nieuw: Prestaties-overlay met FPS, CPU, GPU, RAM en ping (aan te zetten bij Instellingen, sneltoets F9)",
-            "VIP: eigen kleuren, RGB-rand, gouden stijl en vrije positie voor de Prestaties-overlay" };
+            "Prestaties-overlay is nu een strak balkje van links naar rechts (onder elkaar kan ook nog, bij Instellingen)",
+            "Nieuwe plekken voor de Prestaties-overlay: midden boven en midden onder" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -5025,8 +5028,8 @@ fetch('/cancel');}
 
         static Color LoadColor(int v, int warn, int bad, bool lowIsBad)
         {
-            Color good = Color.FromArgb(87, 230, 130), mid = Color.FromArgb(250, 210, 70), hot = Color.FromArgb(245, 85, 85);
-            if (v < 0) return Color.FromArgb(150, 150, 158);
+            Color good = Color.FromArgb(110, 231, 160), mid = Color.FromArgb(252, 211, 77), hot = Color.FromArgb(248, 113, 113);
+            if (v < 0) return Color.FromArgb(140, 140, 150);
             if (lowIsBad) return v < bad ? hot : (v < warn ? mid : good);
             return v >= bad ? hot : (v >= warn ? mid : good);
         }
@@ -5054,7 +5057,7 @@ fetch('/cancel');}
             {
                 int v = PerfStats.RamPct;
                 CultureInfo nl = new CultureInfo("nl-NL");
-                l.Add(new string[] { "RAM", v >= 0 ? PerfStats.RamUsed.ToString("0.0", nl) + " / " + Math.Round(PerfStats.RamTotal).ToString("0", nl) + " GB" : "\u2014" });
+                l.Add(new string[] { "RAM", v >= 0 ? PerfStats.RamUsed.ToString("0.0", nl) + (s.PerfLayout == 0 ? "/" : " / ") + Math.Round(PerfStats.RamTotal).ToString("0", nl) + " GB" : "\u2014" });
                 colors.Add(LoadColor(v, 60, 90, false));
             }
             if (s.PerfPing)
@@ -5075,29 +5078,70 @@ fetch('/cancel');}
             }
         }
 
+        // Vaste breedte per onderdeel, zodat het balkje niet verspringt
+        static string Template(string label)
+        {
+            switch (label)
+            {
+                case "FPS": return "000";
+                case "CPU": case "GPU": return "100%";
+                case "RAM": return "00,0/00 GB";
+                case "PING": return "000 ms";
+                default: return "";
+            }
+        }
+
         public void Render()
         {
             if (!IsHandleCreated || !Visible) return;
             float sc = DpiScale;
-            float px = (s.PerfSize == 0 ? 12f : (s.PerfSize == 2 ? 17f : 14f)) * sc;
+            bool row = s.PerfLayout == 0;
+            float px = (s.PerfSize == 0 ? 13f : (s.PerfSize == 2 ? 18f : 15f)) * sc;
             List<Color> cols;
             List<string[]> lines = Lines(out cols);
-            if (lines.Count == 0) lines.Add(new string[] { "", "Kies wat je wilt zien" });
-            using (Font lf = new Font("Segoe UI", px * 0.86f, FontStyle.Bold, GraphicsUnit.Pixel))
+            bool empty = lines.Count == 0;
+            if (empty) lines.Add(new string[] { "", "Kies wat je wilt zien" });
+            StringFormat sf = StringFormat.GenericTypographic;
+            using (Font lf = new Font("Segoe UI", px * 0.68f, FontStyle.Bold, GraphicsUnit.Pixel))
             using (Font vf = new Font("Segoe UI", px, FontStyle.Bold, GraphicsUnit.Pixel))
             {
-                int pad = (int)(9 * sc), rowH = (int)Math.Ceiling(px * 1.45f), gap = (int)(14 * sc);
-                int labelW, valueW;
+                float lAsc = lf.Size * lf.FontFamily.GetCellAscent(lf.Style) / lf.FontFamily.GetEmHeight(lf.Style);
+                float vAsc = vf.Size * vf.FontFamily.GetCellAscent(vf.Style) / vf.FontFamily.GetEmHeight(vf.Style);
+                int n = lines.Count;
+                float[] lw = new float[n], vw = new float[n], cellW = new float[n];
+                float labelCol = 0;
                 using (Bitmap tmp = new Bitmap(1, 1))
                 using (Graphics mg = Graphics.FromImage(tmp))
                 {
-                    labelW = (int)Math.Ceiling(mg.MeasureString("PING", lf).Width);
-                    valueW = 0;
-                    foreach (string[] ln in lines) valueW = Math.Max(valueW, (int)Math.Ceiling(mg.MeasureString(ln[1], vf).Width));
-                    if (s.PerfRam) valueW = Math.Max(valueW, (int)Math.Ceiling(mg.MeasureString("00,0 / 00 GB", vf).Width));
-                    else valueW = Math.Max(valueW, (int)Math.Ceiling(mg.MeasureString("100%", vf).Width));
+                    for (int i = 0; i < n; i++)
+                    {
+                        lw[i] = lines[i][0].Length > 0 ? mg.MeasureString(lines[i][0], lf, 1000, sf).Width : 0;
+                        vw[i] = Math.Max(mg.MeasureString(lines[i][1], vf, 1000, sf).Width, mg.MeasureString(Template(lines[i][0]), vf, 1000, sf).Width);
+                        labelCol = Math.Max(labelCol, lw[i]);
+                    }
                 }
-                int w = pad * 2 + labelW + gap + valueW, h = pad * 2 + rowH * lines.Count - (int)(rowH * 0.15f);
+                float padX = (row ? 14 : 12) * sc, padY = 9 * sc, labGap = 6 * sc, sepGap = 13 * sc;
+                float rowH = (float)Math.Ceiling(px * 1.5f);
+                int w, h;
+                if (row)
+                {
+                    float total = padX * 2;
+                    for (int i = 0; i < n; i++)
+                    {
+                        cellW[i] = (lw[i] > 0 ? lw[i] + labGap : 0) + vw[i];
+                        total += cellW[i] + (i > 0 ? sepGap * 2 : 0);
+                    }
+                    w = (int)Math.Ceiling(total);
+                    h = (int)Math.Ceiling(px * 2.15f);
+                }
+                else
+                {
+                    float vmax = 0;
+                    for (int i = 0; i < n; i++) vmax = Math.Max(vmax, vw[i]);
+                    w = (int)Math.Ceiling(padX * 2 + labelCol + 18 * sc + vmax);
+                    h = (int)Math.Ceiling(padY * 2 + rowH * n - px * 0.2f);
+                }
+
                 Rectangle scr = Program.TargetScreen(s).Bounds;
                 int margin = (int)(14 * sc), x, y;
                 if (Vip && s.PerfFree)
@@ -5107,8 +5151,9 @@ fetch('/cancel');}
                 }
                 else
                 {
-                    bool right = s.PerfCorner == 1 || s.PerfCorner == 3, bottom = s.PerfCorner >= 2;
-                    x = right ? scr.Right - w - margin : scr.X + margin;
+                    int colPos = s.PerfPlace % 3;
+                    bool bottom = s.PerfPlace >= 3;
+                    x = colPos == 0 ? scr.X + margin : (colPos == 1 ? scr.X + (scr.Width - w) / 2 : scr.Right - w - margin);
                     y = bottom ? scr.Bottom - h - margin : scr.Y + margin;
                 }
                 if (Left != x || Top != y || Width != w || Height != h) SetBounds(x, y, w, h);
@@ -5120,33 +5165,55 @@ fetch('/cancel');}
                         g.Clear(Color.Transparent);
                         g.SmoothingMode = SmoothingMode.AntiAlias;
                         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-                        Color bg = Vip ? s.PerfBgColor : Color.Black;
+                        Color bg = Vip ? s.PerfBgColor : Color.FromArgb(14, 14, 18);
                         int a = 255 * Math.Max(0, Math.Min(100, s.PerfBg)) / 100;
                         RectangleF box = new RectangleF(0.5f, 0.5f, w - 1.5f, h - 1.5f);
-                        float rad = 7 * sc;
+                        float rad = row ? Math.Min(h / 2f - 1, 10 * sc) : 9 * sc;
                         using (GraphicsPath gp = Round(box, rad))
                         {
                             using (SolidBrush b = new SolidBrush(Color.FromArgb(a, bg.R, bg.G, bg.B))) g.FillPath(b, gp);
-                            Color border = Color.Empty;
-                            if (Vip && s.PerfRgb) border = Hsv(Hue);
-                            else if (Vip && s.PerfGold) border = Color.FromArgb(230, 190, 70);
-                            if (border != Color.Empty)
-                                using (Pen pn = new Pen(border, Math.Max(1.5f, 2f * sc))) g.DrawPath(pn, gp);
+                            Color border = Color.FromArgb(Math.Min(60, 20 + a / 6), 255, 255, 255);
+                            float bw = 1f;
+                            if (Vip && s.PerfRgb) { border = Hsv(Hue); bw = Math.Max(1.5f, 2f * sc); }
+                            else if (Vip && s.PerfGold) { border = Color.FromArgb(230, 190, 70); bw = Math.Max(1.5f, 1.6f * sc); }
+                            using (Pen pn = new Pen(border, bw)) g.DrawPath(pn, gp);
                         }
                         Color txt = TextColor;
-                        Color label = Color.FromArgb(185, txt.R, txt.G, txt.B);
-                        for (int i = 0; i < lines.Count; i++)
+                        Color label = Color.FromArgb(150, txt.R, txt.G, txt.B);
+                        using (SolidBrush lb = new SolidBrush(label))
+                        using (SolidBrush shadow = new SolidBrush(Color.FromArgb(90, 0, 0, 0)))
+                        using (Pen sep = new Pen(Color.FromArgb(45, txt.R, txt.G, txt.B), Math.Max(1f, sc)))
                         {
-                            float ty = pad + i * rowH;
-                            float lOff = (px - px * 0.86f) * 0.55f;
-                            using (SolidBrush lb = new SolidBrush(label)) g.DrawString(lines[i][0], lf, lb, pad - 2 * sc, ty + lOff);
-                            Color vc = (s.PerfLoadColors && i < cols.Count) ? cols[i] : txt;
-                            if (Vip && s.PerfRgb && !s.PerfLoadColors) vc = Hsv((Hue + i * 40) % 360f);
-                            SizeF vs = g.MeasureString(lines[i][1], vf);
-                            using (SolidBrush shadow = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
-                                g.DrawString(lines[i][1], vf, shadow, w - pad - vs.Width + 2 * sc + 1, ty + 1);
-                            using (SolidBrush vb = new SolidBrush(vc))
-                                g.DrawString(lines[i][1], vf, vb, w - pad - vs.Width + 2 * sc, ty);
+                            float cx = padX;
+                            for (int i = 0; i < n; i++)
+                            {
+                                Color vc = (!empty && s.PerfLoadColors && i < cols.Count) ? cols[i] : txt;
+                                if (Vip && s.PerfRgb && !s.PerfLoadColors) vc = Hsv((Hue + i * 40) % 360f);
+                                float baseY, lx, vx;
+                                if (row)
+                                {
+                                    if (i > 0)
+                                    {
+                                        cx += sepGap;
+                                        g.DrawLine(sep, cx, h * 0.3f, cx, h * 0.7f);
+                                        cx += sepGap;
+                                    }
+                                    baseY = h / 2f + px * 0.36f;
+                                    lx = cx;
+                                    vx = cx + (lw[i] > 0 ? lw[i] + labGap : 0);
+                                    cx += cellW[i];
+                                }
+                                else
+                                {
+                                    baseY = padY + i * rowH + vAsc;
+                                    lx = padX;
+                                    float realW = g.MeasureString(lines[i][1], vf, 1000, sf).Width;
+                                    vx = w - padX - realW;
+                                }
+                                if (lines[i][0].Length > 0) g.DrawString(lines[i][0], lf, lb, lx, baseY - lAsc, sf);
+                                g.DrawString(lines[i][1], vf, shadow, vx + 1, baseY - vAsc + 1, sf);
+                                using (SolidBrush vb = new SolidBrush(vc)) g.DrawString(lines[i][1], vf, vb, vx, baseY - vAsc, sf);
+                            }
                         }
                     }
                     IntPtr screen = GetDC(IntPtr.Zero);
