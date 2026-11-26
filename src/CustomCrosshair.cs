@@ -4511,10 +4511,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.19.1";
+        public const string Version = "1.19.2";
         public static readonly string[] Notes = new string[] {
-            "Prestaties-overlay is nu een strak balkje van links naar rechts (onder elkaar kan ook nog, bij Instellingen)",
-            "Nieuwe plekken voor de Prestaties-overlay: midden boven en midden onder" };
+            "FPS in de Prestaties-overlay is nu nauwkeuriger en loopt gelijk met de FPS van je game",
+            "FPS wordt 2 keer per seconde bijgewerkt" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4825,11 +4825,12 @@ fetch('/cancel');}
     {
         const string SessionName = "CustomCrosshairFps";
         static ulong session = 0, trace = ulong.MaxValue;
-        static readonly Dictionary<int, int> counts = new Dictionary<int, int>();
+        // per programma: tijdstippen (100 ns) van de laatste beelden
+        static readonly Dictionary<int, Queue<long>> frames = new Dictionary<int, Queue<long>>();
+        const long Second = 10000000L;
         static EventRecordCallback callback;
         static IntPtr logfile = IntPtr.Zero, loggerName = IntPtr.Zero;
         public static bool Running = false;
-        static int lastTake = 0;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate void EventRecordCallback(IntPtr rec);
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern uint StartTraceW(out ulong handle, string name, IntPtr props);
@@ -4898,8 +4899,7 @@ fetch('/cancel');}
                 Marshal.WriteIntPtr(logfile, 424, Marshal.GetFunctionPointerForDelegate(callback));
                 trace = OpenTraceW(logfile);
                 if (trace == ulong.MaxValue) { StopSession(); return false; }
-                lock (counts) counts.Clear();
-                lastTake = Environment.TickCount;
+                lock (frames) frames.Clear();
                 Running = true;
                 ulong h = trace;
                 System.Threading.Thread th = new System.Threading.Thread(delegate()
@@ -4933,20 +4933,48 @@ fetch('/cancel');}
                 bool present = (d1 == 0xCA11C036u && (id == 42 || id == 55)) || (d1 == 0x783ACA0Au && id == 1);
                 if (!present) return;
                 int pid = Marshal.ReadInt32(rec, 12);
-                lock (counts) { int c; counts.TryGetValue(pid, out c); counts[pid] = c + 1; }
+                long ts = Marshal.ReadInt64(rec, 16);   // TimeStamp (systeemtijd, 100 ns)
+                lock (frames)
+                {
+                    Queue<long> q;
+                    if (!frames.TryGetValue(pid, out q)) { q = new Queue<long>(); frames[pid] = q; }
+                    q.Enqueue(ts);
+                    while (q.Count > 0 && (q.Peek() < ts - 2 * Second || q.Count > 4000)) q.Dequeue();
+                }
             }
             catch { }
         }
 
-        // FPS van een programma sinds de vorige keer; daarna wordt de teller gewist
-        public static int Take(int pid)
+        // FPS van een programma: gemiddelde tijd tussen de beelden van de laatste seconde
+        // (met de echte tijd van elk beeld, dus niet afhankelijk van wanneer Windows ze doorgeeft)
+        public static double Measure(int pid)
         {
-            int now = Environment.TickCount;
-            int ms = Math.Max(1, now - lastTake);
-            lastTake = now;
-            int c;
-            lock (counts) { counts.TryGetValue(pid, out c); counts.Clear(); }
-            return (int)Math.Round(c * 1000.0 / ms);
+            long now = DateTime.UtcNow.ToFileTimeUtc();
+            lock (frames)
+            {
+                // oude programma's opruimen
+                List<int> gone = new List<int>();
+                foreach (KeyValuePair<int, Queue<long>> kv in frames)
+                {
+                    long last = 0;
+                    foreach (long v in kv.Value) last = v;
+                    if (kv.Value.Count == 0 || last < now - 5 * Second) gone.Add(kv.Key);
+                }
+                foreach (int k in gone) frames.Remove(k);
+
+                Queue<long> q;
+                if (!frames.TryGetValue(pid, out q) || q.Count < 2) return -1;
+                long[] a = q.ToArray();
+                long newest = a[a.Length - 1];
+                if (newest < now - 3 * Second) return -1;   // game laat geen beelden meer zien
+                int first = a.Length - 1;
+                while (first > 0 && a[first - 1] >= newest - Second) first--;
+                int n = a.Length - 1 - first;
+                if (n < 1) return -1;
+                double span = (newest - a[first]) / (double)Second;
+                if (span <= 0) return -1;
+                return n / span;
+            }
         }
     }
 
@@ -5011,7 +5039,9 @@ fetch('/cancel');}
 
         bool Vip { get { return DiscordGate.IsVip; } }
 
-        // Elke seconde: FPS van de game op de voorgrond bijwerken
+        double smooth = 0;
+
+        // Twee keer per seconde: FPS van de game op de voorgrond bijwerken
         public void Tick()
         {
             if (!s.PerfOn) return;
@@ -5020,9 +5050,15 @@ fetch('/cancel');}
                 uint pid = 0;
                 try { GetWindowThreadProcessId(GetForegroundWindow(), out pid); } catch { }
                 if (pid != 0 && pid != (uint)System.Diagnostics.Process.GetCurrentProcess().Id) lastGamePid = (int)pid;
-                Fps = lastGamePid != 0 ? EtwFps.Take(lastGamePid) : -1;
+                double f = lastGamePid != 0 ? EtwFps.Measure(lastGamePid) : -1;
+                if (f <= 0) { Fps = -1; smooth = 0; }
+                else
+                {
+                    smooth = smooth > 0 ? smooth * 0.4 + f * 0.6 : f;   // licht afgevlakt
+                    Fps = (int)Math.Round(smooth);
+                }
             }
-            else Fps = -1;
+            else { Fps = -1; smooth = 0; }
             Render();
         }
 
@@ -5691,7 +5727,7 @@ fetch('/cancel');}
             ApplyPerf();
 
             Timer perfTimer = new Timer();
-            perfTimer.Interval = 1000;
+            perfTimer.Interval = 500;
             perfTimer.Tick += delegate { if (S.PerfOn) perf.Tick(); };
             perfTimer.Start();
             Timer perfRgbTimer = new Timer();
