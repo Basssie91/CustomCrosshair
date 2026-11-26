@@ -3037,6 +3037,28 @@ namespace CustomCrosshair
             catch { MessageBox.Show(this, "Kopieren lukte niet, probeer het nog eens.", "Custom Crosshair"); }
         }
 
+        // Code kopieren en meteen het crosshairs-kanaal in Discord openen
+        void ShareInDiscord()
+        {
+            if (s.Style == Settings.StyleImage)
+            {
+                MessageBox.Show(this, "Een eigen plaatje kun je niet delen in Discord, want het past niet in een code. Kies een andere crosshair-stijl om te delen.", "Custom Crosshair");
+                return;
+            }
+            try
+            {
+                string code = ShareCode.Make(s);
+                Clipboard.SetText(code);
+                lastClipCode = code;
+            }
+            catch { MessageBox.Show(this, "Kopieren lukte niet, probeer het nog eens.", "Custom Crosshair"); return; }
+            string path = "/channels/" + DiscordGate.GuildId + "/" + DiscordGate.ShareChannelId;
+            bool app = false;
+            try { app = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey("discord") != null; } catch { }
+            DiscordGate.Open(app ? "discord://-" + path : "https://discord.com" + path);
+            MessageBox.Show(this, "Je code is gekopieerd.\n\nKlik onderaan het crosshairs-kanaal op \u201CCrosshair delen\u201D en plak je code (Ctrl+V).", "Custom Crosshair");
+        }
+
         static string lastClipCode = "";
 
         // Code gekopieerd uit Discord? Dan vragen we of je hem wilt gebruiken
@@ -3442,6 +3464,7 @@ namespace CustomCrosshair
                 C = new Card("\uE8C8", "Crosshair-code", hw);
                 C.Add(new CodeRow(() => ShareCode.Make(s)));
                 C.Add(new ButtonRow("\uE8C8", "Mijn code kopieren", false, delegate { CopyCode(); }));
+                C.Add(new ButtonRow("\uE72D", "Delen in Discord", false, delegate { ShareInDiscord(); }));
                 InputRow codeInput = null;
                 codeInput = C.Add(new InputRow("Plak hier een code (BC-...)", delegate { UseCode(codeInput.Value); }));
                 C.Add(new ButtonRow("\uE896", "Code gebruiken", false, delegate { UseCode(codeInput.Value); }));
@@ -3962,6 +3985,7 @@ namespace CustomCrosshair
     {
         public const string ClientId = "1569303356315402351";
         public const string GuildId = "1569304769242075238";
+        public const string ShareChannelId = "1574500346192199770";
         public const string RoleId = "1574492909690949712";
         public const string VipRoleId = "1569446905874743316";
         public static bool IsVip = false;
@@ -4383,10 +4407,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.17.1";
+        public const string Version = "1.18.0";
         public static readonly string[] Notes = new string[] {
-            "Auto-contrast is weggehaald",
-            "Crosshair delen gaat nu via de knop in het crosshairs-kanaal in Discord. Kopieer daar een code en open het menu om hem te gebruiken" };
+            "Nieuwe knop Delen in Discord bij Profielen: kopieert je code en opent meteen het crosshairs-kanaal" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
