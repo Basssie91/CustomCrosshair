@@ -893,6 +893,59 @@ namespace CustomCrosshair
         [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
         [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
         [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr hObject);
+        [StructLayout(LayoutKind.Sequential)]
+        struct BITMAPINFOHEADER
+        {
+            public int biSize, biWidth, biHeight; public short biPlanes, biBitCount;
+            public int biCompression, biSizeImage, biXPelsPerMeter, biYPelsPerMeter, biClrUsed, biClrImportant;
+        }
+        [DllImport("gdi32.dll")] static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFOHEADER bmi, uint usage, out IntPtr bits, IntPtr section, uint offset);
+
+        // Eén tekenvlak dat steeds opnieuw gebruikt wordt (geen nieuw plaatje per beeld)
+        IntPtr memDC = IntPtr.Zero, dib = IntPtr.Zero, oldObj = IntPtr.Zero;
+        Bitmap canvas;
+        int canvasW, canvasH;
+
+        void FreeCanvas()
+        {
+            if (canvas != null) { canvas.Dispose(); canvas = null; }
+            if (memDC != IntPtr.Zero)
+            {
+                if (oldObj != IntPtr.Zero) SelectObject(memDC, oldObj);
+                DeleteDC(memDC);
+            }
+            if (dib != IntPtr.Zero) DeleteObject(dib);
+            memDC = dib = oldObj = IntPtr.Zero;
+            canvasW = canvasH = 0;
+        }
+
+        bool EnsureCanvas(int w, int h)
+        {
+            if (canvas != null && canvasW == w && canvasH == h) return true;
+            FreeCanvas();
+            IntPtr screen = GetDC(IntPtr.Zero);
+            try
+            {
+                memDC = CreateCompatibleDC(screen);
+                BITMAPINFOHEADER bi = new BITMAPINFOHEADER();
+                bi.biSize = 40; bi.biWidth = w; bi.biHeight = -h; bi.biPlanes = 1; bi.biBitCount = 32;
+                IntPtr bits;
+                dib = CreateDIBSection(memDC, ref bi, 0, out bits, IntPtr.Zero, 0);
+                if (dib == IntPtr.Zero || bits == IntPtr.Zero) { FreeCanvas(); return false; }
+                oldObj = SelectObject(memDC, dib);
+                canvas = new Bitmap(w, h, w * 4, PixelFormat.Format32bppPArgb, bits);
+                canvasW = w; canvasH = h;
+                return true;
+            }
+            catch { FreeCanvas(); return false; }
+            finally { ReleaseDC(IntPtr.Zero, screen); }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            FreeCanvas();
+            base.Dispose(disposing);
+        }
 
         public Overlay(Settings settings)
         {
@@ -930,36 +983,22 @@ namespace CustomCrosshair
         void Render()
         {
             if (!IsHandleCreated || !Visible || Width <= 0 || Height <= 0) return;
-            using (Bitmap bmp = new Bitmap(Width, Height, PixelFormat.Format32bppArgb))
+            if (!EnsureCanvas(Width, Height)) return;
+            using (Graphics g = Graphics.FromImage(canvas))
             {
-                using (Graphics g = Graphics.FromImage(bmp))
-                {
-                    g.Clear(Color.Transparent);
-                    Crosshair.Draw(g, s, Width / 2 + s.OffsetX, Height / 2 + s.OffsetY);
-                }
-                IntPtr screen = GetDC(IntPtr.Zero);
-                IntPtr mem = CreateCompatibleDC(screen);
-                IntPtr hbmp = IntPtr.Zero, old = IntPtr.Zero;
-                try
-                {
-                    hbmp = bmp.GetHbitmap(Color.FromArgb(0));
-                    old = SelectObject(mem, hbmp);
-                    PT dst = new PT(Left, Top), src = new PT(0, 0);
-                    SZ size = new SZ(bmp.Width, bmp.Height);
-                    BLEND bl = new BLEND();
-                    bl.BlendOp = 0; bl.BlendFlags = 0;
-                    bl.SourceConstantAlpha = (byte)(255 * Math.Max(10, Math.Min(100, s.Opacity)) / 100);
-                    bl.AlphaFormat = 1;
-                    UpdateLayeredWindow(Handle, screen, ref dst, ref size, mem, ref src, 0, ref bl, 2);
-                }
-                finally
-                {
-                    if (old != IntPtr.Zero) SelectObject(mem, old);
-                    if (hbmp != IntPtr.Zero) DeleteObject(hbmp);
-                    DeleteDC(mem);
-                    ReleaseDC(IntPtr.Zero, screen);
-                }
+                g.CompositingMode = CompositingMode.SourceCopy;
+                g.Clear(Color.Transparent);
+                g.CompositingMode = CompositingMode.SourceOver;
+                Crosshair.Draw(g, s, Width / 2 + s.OffsetX, Height / 2 + s.OffsetY);
+                g.Flush(FlushIntention.Sync);
             }
+            PT dst = new PT(Left, Top), src = new PT(0, 0);
+            SZ size = new SZ(canvasW, canvasH);
+            BLEND bl = new BLEND();
+            bl.BlendOp = 0; bl.BlendFlags = 0;
+            bl.SourceConstantAlpha = (byte)(255 * Math.Max(10, Math.Min(100, s.Opacity)) / 100);
+            bl.AlphaFormat = 1;
+            UpdateLayeredWindow(Handle, IntPtr.Zero, ref dst, ref size, memDC, ref src, 0, ref bl, 2);
         }
 
         public void InvalidateCrosshair()
@@ -982,6 +1021,7 @@ namespace CustomCrosshair
             if (!show && Visible) Hide();
             Render();
             KeepOnTop();
+            KeyHook.SetMouse(s.Hitmarker && DiscordGate.IsVip);
         }
     }
 
@@ -3014,14 +3054,19 @@ namespace CustomCrosshair
             }
         }
 
-        public void InvalidatePreviews() { InvalidateAnimated(content); if (leftPanel != null) InvalidateAnimated(leftPanel); }
+        public void InvalidatePreviews() { InvalidateAnimated(content, content); if (leftPanel != null) InvalidateAnimated(leftPanel, leftPanel); }
 
-        void InvalidateAnimated(Control parent)
+        // Alleen voorbeelden die je echt ziet opnieuw tekenen
+        void InvalidateAnimated(Control parent, Control view)
         {
+            Rectangle vis = view.RectangleToScreen(view.ClientRectangle);
             foreach (Control c in parent.Controls)
             {
+                if (!c.Visible) continue;
+                Rectangle r = c.RectangleToScreen(c.ClientRectangle);
+                if (!r.IntersectsWith(vis)) continue;
                 if (c is PreviewBox || c is StyleRow || c is ColorRow || c is SwatchRow) c.Invalidate();
-                if (c.HasChildren) InvalidateAnimated(c);
+                if (c.HasChildren) InvalidateAnimated(c, view);
             }
         }
 
@@ -3739,11 +3784,15 @@ namespace CustomCrosshair
         {
             System.Threading.Thread th = new System.Threading.Thread(delegate()
             {
+                MSG m;
+                PeekMessage(out m, IntPtr.Zero, 0, 0, 0);   // berichtenrij aanmaken
                 hookThread = GetCurrentThreadId();
                 hook = SetWindowsHookEx(13, proc, GetModuleHandle(null), 0);
-                mouseHook = SetWindowsHookEx(14, mproc, GetModuleHandle(null), 0);
-                MSG m;
-                while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { }
+                ApplyMouse();
+                while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0)
+                {
+                    if (m.hwnd == IntPtr.Zero && m.message == WM_MOUSEHOOK) ApplyMouse();
+                }
                 if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
                 if (mouseHook != IntPtr.Zero) UnhookWindowsHookEx(mouseHook);
                 hook = IntPtr.Zero; mouseHook = IntPtr.Zero;
@@ -3762,6 +3811,29 @@ namespace CustomCrosshair
         static HookProc mproc = MouseCallback;
         static IntPtr mouseHook = IntPtr.Zero;
         public static Action OnLeftClick;
+        [DllImport("user32.dll")] static extern bool PeekMessage(out MSG m, IntPtr h, uint min, uint max, uint remove);
+        const uint WM_MOUSEHOOK = 0x8001;
+        static volatile bool mouseWanted = false;
+
+        // Muis-haakje alleen als het nodig is (hitmarker). Anders loopt niet elke muisbeweging langs de app.
+        public static void SetMouse(bool on)
+        {
+            if (mouseWanted == on) return;
+            mouseWanted = on;
+            if (hookThread != 0) PostThreadMessage(hookThread, WM_MOUSEHOOK, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        // draait op de hook-draad
+        static void ApplyMouse()
+        {
+            if (mouseWanted && mouseHook == IntPtr.Zero)
+                mouseHook = SetWindowsHookEx(14, mproc, GetModuleHandle(null), 0);
+            else if (!mouseWanted && mouseHook != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(mouseHook);
+                mouseHook = IntPtr.Zero;
+            }
+        }
 
         static IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
@@ -4407,9 +4479,10 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.19.3";
+        public const string Version = "1.19.4";
         public static readonly string[] Notes = new string[] {
-            "De Prestaties-overlay is weggehaald" };
+            "De app gebruikt minder CPU, vooral met RGB of animaties",
+            "Je muis wordt alleen nog afgeluisterd als de hitmarker aan staat (geen extra werk bij elke muisbeweging)" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4989,6 +5062,7 @@ fetch('/cancel');}
             fgTimer.Tick += delegate { CheckForeground(); };
             fgTimer.Start();
 
+            int rgbFrame = 0;
             Timer rgbTimer = new Timer();
             rgbTimer.Interval = 33;
             rgbTimer.Tick += delegate
@@ -4998,7 +5072,8 @@ fetch('/cancel');}
                 if (!S.Rgb && !anim) return;
                 if (S.Rgb) Crosshair.Hue = (Crosshair.Hue + S.RgbSpeed * 0.8f) % 360f;
                 overlay.InvalidateCrosshair();
-                if (menu.Visible) menu.InvalidatePreviews();
+                rgbFrame++;
+                if (menu.Visible && (rgbFrame & 1) == 0) menu.InvalidatePreviews();   // menu: 15x per seconde is genoeg
             };
             rgbTimer.Start();
 
@@ -5041,6 +5116,7 @@ fetch('/cancel');}
             {
                 if (S.Hitmarker && DiscordGate.IsVip) { int now = Environment.TickCount; Crosshair.HitTime = now == 0 ? 1 : now; }
             };
+            KeyHook.SetMouse(S.Hitmarker && DiscordGate.IsVip);
             KeyHook.Start();
 
             bool tour = !S.TourDone;
