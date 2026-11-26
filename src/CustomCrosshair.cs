@@ -57,19 +57,6 @@ namespace CustomCrosshair
         public int ImageScale = 100;
         public string Pixels = DefaultPixels();
         public int PixelSize = 2;
-        // prestaties-overlay
-        public bool PerfOn = false;
-        public bool PerfFps = true, PerfCpu = true, PerfGpu = true, PerfRam = true, PerfPing = true;
-        public bool PerfLoadColors = true;
-        public int PerfPlace = 1;    // 0 linksboven, 1 midden boven, 2 rechtsboven, 3 linksonder, 4 midden onder, 5 rechtsonder
-        public int PerfLayout = 0;   // 0 naast elkaar (balk), 1 onder elkaar (blok)
-        public int PerfSize = 1;     // 0 klein, 1 normaal, 2 groot
-        public int PerfBg = 60;      // achtergrond zichtbaarheid in %
-        public int PerfKey = 0x78;   // F9
-        public Color PerfColor = Color.White;      // VIP
-        public Color PerfBgColor = Color.Black;    // VIP
-        public bool PerfRgb = false, PerfGold = false, PerfFree = false;  // VIP
-        public int PerfX = 2, PerfY = 3;           // VIP: vrije positie in %
 
         public Settings Clone() { return (Settings)MemberwiseClone(); }
 
@@ -180,25 +167,6 @@ namespace CustomCrosshair
                 case "OffsetX": if (ok) OffsetX = n; break;
                 case "OffsetY": if (ok) OffsetY = n; break;
                 case "MenuKey": if (ok && n > 0) MenuKey = n; break;
-                case "PerfOn": PerfOn = v == "True"; break;
-                case "PerfFps": PerfFps = v == "True"; break;
-                case "PerfCpu": PerfCpu = v == "True"; break;
-                case "PerfGpu": PerfGpu = v == "True"; break;
-                case "PerfRam": PerfRam = v == "True"; break;
-                case "PerfPing": PerfPing = v == "True"; break;
-                case "PerfLoadColors": PerfLoadColors = v == "True"; break;
-                case "PerfPlace": if (ok) PerfPlace = Math.Max(0, Math.Min(5, n)); break;
-                case "PerfLayout": if (ok) PerfLayout = Math.Max(0, Math.Min(1, n)); break;
-                case "PerfSize": if (ok) PerfSize = Math.Max(0, Math.Min(2, n)); break;
-                case "PerfBg": if (ok) PerfBg = Math.Max(0, Math.Min(100, n)); break;
-                case "PerfKey": if (ok && n >= 0) PerfKey = n; break;
-                case "PerfColor": if (ok) PerfColor = Color.FromArgb(255, Color.FromArgb(n)); break;
-                case "PerfBgColor": if (ok) PerfBgColor = Color.FromArgb(255, Color.FromArgb(n)); break;
-                case "PerfRgb": PerfRgb = v == "True"; break;
-                case "PerfGold": PerfGold = v == "True"; break;
-                case "PerfFree": PerfFree = v == "True"; break;
-                case "PerfX": if (ok) PerfX = Math.Max(0, Math.Min(100, n)); break;
-                case "PerfY": if (ok) PerfY = Math.Max(0, Math.Min(100, n)); break;
             }
         }
 
@@ -223,9 +191,6 @@ namespace CustomCrosshair
                 l.Add("MenuTheme=" + MenuTheme); l.Add("StyleV2=" + StyleV2); l.Add("FivemAutoProfile=" + FivemAutoProfile);
                 l.Add("OnboardV=" + OnboardV); l.Add("TourDone=" + TourDone); l.Add("LastSeenVersion=" + LastSeenVersion); l.Add("NewsSeenVersion=" + NewsSeenVersion);
                 l.Add("DiscordToken=" + DiscordToken); l.Add("DiscordExpires=" + DiscordExpires); l.Add("DiscordVerifiedUntil=" + DiscordVerifiedUntil); l.Add("Accent=" + Accent.ToArgb()); l.Add("MenuOpacity=" + MenuOpacity); l.Add("GoldMenu=" + GoldMenu); l.Add("MenuRgb=" + MenuRgb);
-                l.Add("PerfOn=" + PerfOn); l.Add("PerfFps=" + PerfFps); l.Add("PerfCpu=" + PerfCpu); l.Add("PerfGpu=" + PerfGpu); l.Add("PerfRam=" + PerfRam); l.Add("PerfPing=" + PerfPing);
-                l.Add("PerfLoadColors=" + PerfLoadColors); l.Add("PerfPlace=" + PerfPlace); l.Add("PerfLayout=" + PerfLayout); l.Add("PerfSize=" + PerfSize); l.Add("PerfBg=" + PerfBg); l.Add("PerfKey=" + PerfKey);
-                l.Add("PerfColor=" + PerfColor.ToArgb()); l.Add("PerfBgColor=" + PerfBgColor.ToArgb()); l.Add("PerfRgb=" + PerfRgb); l.Add("PerfGold=" + PerfGold); l.Add("PerfFree=" + PerfFree); l.Add("PerfX=" + PerfX); l.Add("PerfY=" + PerfY);
                 File.WriteAllLines(FilePath, l.ToArray());
             }
             catch { }
@@ -3340,73 +3305,6 @@ namespace CustomCrosshair
             Invalidate();
         }
 
-        // Instellingen voor de prestaties-overlay (FPS, CPU, GPU, RAM, ping)
-        Card BuildPerfCard(int cw)
-        {
-            Card P = new Card("\uE9D9", "Prestaties-overlay", cw);
-            P.Add(new InfoRow("Een klein blokje met je FPS, CPU, GPU, RAM en ping, altijd over je game heen. Je muis klikt er gewoon doorheen.", 32));
-            P.Add(new ToggleRow("\uE9D9", "Prestaties-overlay tonen", s.PerfOn, v =>
-            {
-                Program.SetPerf(v);
-                if (v) BeginInvoke(new Action(delegate { Program.AskFpsAdmin(this); }));
-            }));
-            P.Add(new KeyRow("\uE765", "Sneltoets aan/uit", s.PerfKey, k =>
-            {
-                if (k == s.MenuKey) { MessageBox.Show(this, "Die toets gebruik je al voor het menu. Kies een andere toets.", "Custom Crosshair"); Rebuild(); return; }
-                s.PerfKey = k; s.Save();
-            }));
-            P.Add(new ChoiceRow("\uE8A9", "Indeling", new string[] { "Naast elkaar", "Onder elkaar" }, s.PerfLayout, v => { s.PerfLayout = v; s.Save(); Program.ApplyPerf(); }));
-            if (!(DiscordGate.IsVip && s.PerfFree))
-                P.Add(new ChoiceRow("\uE7F4", "Plek", new string[] { "Linksboven", "Midden boven", "Rechtsboven", "Linksonder", "Midden onder", "Rechtsonder" }, s.PerfPlace, v => { s.PerfPlace = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new ChoiceRow("\uE8E9", "Grootte", new string[] { "Klein", "Normaal", "Groot" }, s.PerfSize, v => { s.PerfSize = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new SliderRow("\uE7B3", "Achtergrond", 0, 100, s.PerfBg, v => v + "%", v => { s.PerfBg = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new InfoRow("Wat wil je zien?", 18));
-            P.Add(new ToggleRow("\uE7FC", "FPS", s.PerfFps, v =>
-            {
-                s.PerfFps = v; s.Save(); Program.ApplyPerf();
-                if (v) BeginInvoke(new Action(delegate { Program.AskFpsAdmin(this); }));
-            }));
-            P.Add(new ToggleRow("\uE950", "CPU", s.PerfCpu, v => { s.PerfCpu = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new ToggleRow("\uE7F4", "GPU", s.PerfGpu, v => { s.PerfGpu = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new ToggleRow("\uE964", "RAM", s.PerfRam, v => { s.PerfRam = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new ToggleRow("\uE701", "Ping", s.PerfPing, v => { s.PerfPing = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new ToggleRow("\uE790", "Kleur per belasting (groen/geel/rood)", s.PerfLoadColors, v => { s.PerfLoadColors = v; s.Save(); Program.ApplyPerf(); }));
-            P.Add(new InfoRow(Program.IsAdmin
-                ? "FPS werkt: de app draait als beheerder."
-                : "FPS werkt alleen als de app als beheerder draait. Zet je FPS aan, dan vraagt de app of hij opnieuw mag opstarten als beheerder.", 32));
-            if (DiscordGate.IsVip)
-            {
-                P.Add(new InfoRow("VIP-opties", 18));
-                P.Add(new ColorRow("\uE790", "Tekstkleur (VIP)", () => s.PerfColor, delegate
-                {
-                    using (ColorDialog cd = new ColorDialog())
-                    {
-                        cd.Color = s.PerfColor; cd.FullOpen = true;
-                        if (cd.ShowDialog(this) == DialogResult.OK) { s.PerfColor = cd.Color; s.PerfGold = false; s.Save(); Program.ApplyPerf(); Rebuild(); }
-                    }
-                }));
-                P.Add(new ColorRow("\uE790", "Achtergrondkleur (VIP)", () => s.PerfBgColor, delegate
-                {
-                    using (ColorDialog cd = new ColorDialog())
-                    {
-                        cd.Color = s.PerfBgColor; cd.FullOpen = true;
-                        if (cd.ShowDialog(this) == DialogResult.OK) { s.PerfBgColor = cd.Color; s.Save(); Program.ApplyPerf(); }
-                    }
-                }));
-                P.Add(new ToggleRow("\uE706", "RGB-rand (VIP)", s.PerfRgb, v => { s.PerfRgb = v; if (v) s.PerfGold = false; s.Save(); Program.ApplyPerf(); Rebuild(); }));
-                P.Add(new ToggleRow("\uE734", "Gouden stijl (VIP)", s.PerfGold, v => { s.PerfGold = v; if (v) s.PerfRgb = false; s.Save(); Program.ApplyPerf(); Rebuild(); }));
-                P.Add(new ToggleRow("\uE7C2", "Vrije positie (VIP)", s.PerfFree, v => { s.PerfFree = v; s.Save(); Program.ApplyPerf(); Rebuild(); }));
-                if (s.PerfFree)
-                {
-                    P.Add(new SliderRow("\uE76F", "Links \u2194 rechts", 0, 100, s.PerfX, v => v + "%", v => { s.PerfX = v; s.Save(); Program.ApplyPerf(); }));
-                    P.Add(new SliderRow("\uE70D", "Boven \u2195 onder", 0, 100, s.PerfY, v => v + "%", v => { s.PerfY = v; s.Save(); Program.ApplyPerf(); }));
-                }
-            }
-            else
-                P.Add(new InfoRow("VIP's kunnen eigen kleuren, een RGB-rand, een gouden stijl en een vrije positie kiezen.", 32));
-            return P;
-        }
-
         Card[] BuildCards(int page, int tab, int colW)
         {
             int cw = colW;
@@ -3669,8 +3567,6 @@ namespace CustomCrosshair
                 }));
                 R.Add(new ButtonRow("\uE72C", "Standaard herstellen", false, delegate { s.ResetLook(); Changed(); Rebuild(); }));
                 R.Add(new ButtonRow("\uE7E8", "Afsluiten", true, delegate { Program.Quit(); }));
-
-                C = BuildPerfCard(cw);
             }
 
 
@@ -4511,10 +4407,9 @@ fetch('/cancel');}
     // ------------------------------------------------------------------ updates via GitHub
     public static class Updater
     {
-        public const string Version = "1.19.2";
+        public const string Version = "1.19.3";
         public static readonly string[] Notes = new string[] {
-            "FPS in de Prestaties-overlay is nu nauwkeuriger en loopt gelijk met de FPS van je game",
-            "FPS wordt 2 keer per seconde bijgewerkt" };
+            "De Prestaties-overlay is weggehaald" };
         const string Repo = "Basssie91/CustomCrosshair";
         static bool busy = false;
         static bool forcing = false;
@@ -4703,618 +4598,6 @@ fetch('/cancel');}
         }
     }
 
-    // ------------------------------------------------------------------ prestaties (CPU, GPU, RAM, ping)
-    public static class PerfStats
-    {
-        public static volatile int Cpu = -1, Gpu = -1, Ping = -1, RamPct = -1;
-        public static float RamUsed = 0, RamTotal = 0;
-        public static volatile bool Want = false;
-        static System.Threading.Thread th;
-
-        [StructLayout(LayoutKind.Sequential)] struct FT { public uint lo, hi; public ulong V { get { return ((ulong)hi << 32) | lo; } } }
-        [DllImport("kernel32.dll")] static extern bool GetSystemTimes(out FT idle, out FT kernel, out FT user);
-        [StructLayout(LayoutKind.Sequential)]
-        class MEMSTAT
-        {
-            public uint dwLength = 64; public uint dwMemoryLoad;
-            public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile, ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual;
-        }
-        [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx([In, Out] MEMSTAT m);
-
-        public static void Start()
-        {
-            if (th != null) return;
-            th = new System.Threading.Thread(Loop);
-            th.IsBackground = true;
-            th.Priority = System.Threading.ThreadPriority.BelowNormal;
-            th.Start();
-        }
-
-        static void Loop()
-        {
-            ulong pIdle = 0, pTotal = 0;
-            Dictionary<string, System.Diagnostics.PerformanceCounter> gpu = new Dictionary<string, System.Diagnostics.PerformanceCounter>();
-            bool gpuOk = true;
-            int tick = 0;
-            while (true)
-            {
-                if (!Want) { System.Threading.Thread.Sleep(400); continue; }
-                int t0 = Environment.TickCount;
-                // CPU
-                try
-                {
-                    FT idle, kernel, user;
-                    if (GetSystemTimes(out idle, out kernel, out user))
-                    {
-                        ulong total = kernel.V + user.V, id = idle.V;
-                        if (pTotal != 0 && total > pTotal)
-                        {
-                            double busy = 1.0 - (double)(id - pIdle) / (total - pTotal);
-                            Cpu = (int)Math.Round(Math.Max(0, Math.Min(1, busy)) * 100);
-                        }
-                        pTotal = total; pIdle = id;
-                    }
-                }
-                catch { Cpu = -1; }
-                // RAM
-                try
-                {
-                    MEMSTAT m = new MEMSTAT();
-                    if (GlobalMemoryStatusEx(m))
-                    {
-                        RamTotal = m.ullTotalPhys / 1073741824f;
-                        RamUsed = (m.ullTotalPhys - m.ullAvailPhys) / 1073741824f;
-                        RamPct = (int)m.dwMemoryLoad;
-                    }
-                }
-                catch { RamPct = -1; }
-                // GPU (zelfde teller als Taakbeheer)
-                if (gpuOk)
-                {
-                    try
-                    {
-                        if (tick % 5 == 0)
-                        {
-                            System.Diagnostics.PerformanceCounterCategory cat = new System.Diagnostics.PerformanceCounterCategory("GPU Engine");
-                            HashSet<string> names = new HashSet<string>();
-                            foreach (string n in cat.GetInstanceNames()) if (n.EndsWith("engtype_3D", StringComparison.OrdinalIgnoreCase)) names.Add(n);
-                            List<string> gone = new List<string>();
-                            foreach (string k in gpu.Keys) if (!names.Contains(k)) gone.Add(k);
-                            foreach (string k in gone) { try { gpu[k].Dispose(); } catch { } gpu.Remove(k); }
-                            foreach (string n in names)
-                                if (!gpu.ContainsKey(n))
-                                {
-                                    try { System.Diagnostics.PerformanceCounter pc = new System.Diagnostics.PerformanceCounter("GPU Engine", "Utilization Percentage", n, true); pc.NextValue(); gpu[n] = pc; }
-                                    catch { }
-                                }
-                        }
-                        float sum = 0;
-                        List<string> bad = new List<string>();
-                        foreach (KeyValuePair<string, System.Diagnostics.PerformanceCounter> kv in gpu)
-                        {
-                            try { sum += kv.Value.NextValue(); } catch { bad.Add(kv.Key); }
-                        }
-                        foreach (string k in bad) { try { gpu[k].Dispose(); } catch { } gpu.Remove(k); }
-                        if (tick > 0) Gpu = (int)Math.Round(Math.Max(0, Math.Min(100, sum)));
-                    }
-                    catch { gpuOk = false; Gpu = -1; }
-                }
-                // Ping (elke 2 seconden)
-                if (tick % 2 == 0)
-                {
-                    try
-                    {
-                        using (System.Net.NetworkInformation.Ping p = new System.Net.NetworkInformation.Ping())
-                        {
-                            System.Net.NetworkInformation.PingReply r = p.Send("1.1.1.1", 900);
-                            Ping = r.Status == System.Net.NetworkInformation.IPStatus.Success ? (int)r.RoundtripTime : -1;
-                        }
-                    }
-                    catch { Ping = -1; }
-                }
-                tick++;
-                int wait = 1000 - (Environment.TickCount - t0);
-                if (wait > 0) System.Threading.Thread.Sleep(wait);
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------ FPS via Windows-gebeurtenissen (ETW, zoals PresentMon)
-    // Telt hoeveel beelden (Present) elk programma per seconde laat zien. Werkt alleen als beheerder.
-    public static class EtwFps
-    {
-        const string SessionName = "CustomCrosshairFps";
-        static ulong session = 0, trace = ulong.MaxValue;
-        // per programma: tijdstippen (100 ns) van de laatste beelden
-        static readonly Dictionary<int, Queue<long>> frames = new Dictionary<int, Queue<long>>();
-        const long Second = 10000000L;
-        static EventRecordCallback callback;
-        static IntPtr logfile = IntPtr.Zero, loggerName = IntPtr.Zero;
-        public static bool Running = false;
-
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate void EventRecordCallback(IntPtr rec);
-        [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern uint StartTraceW(out ulong handle, string name, IntPtr props);
-        [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern uint ControlTraceW(ulong handle, string name, IntPtr props, uint code);
-        [DllImport("advapi32.dll")] static extern uint EnableTraceEx2(ulong handle, ref Guid provider, uint code, byte level, ulong any, ulong all, uint timeout, IntPtr param);
-        [DllImport("advapi32.dll")] static extern ulong OpenTraceW(IntPtr logfile);
-        [DllImport("advapi32.dll")] static extern uint ProcessTrace(ulong[] handles, uint count, IntPtr start, IntPtr end);
-        [DllImport("advapi32.dll")] static extern uint CloseTrace(ulong handle);
-
-        static readonly Guid Dxgi = new Guid("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
-        static readonly Guid D3d9 = new Guid("783ACA0A-790E-4D7F-8451-AA850511C6B9");
-
-        static IntPtr Props()
-        {
-            const int size = 1024;
-            IntPtr p = Marshal.AllocHGlobal(size);
-            for (int i = 0; i < size; i++) Marshal.WriteByte(p, i, 0);
-            Marshal.WriteInt32(p, 0, size);        // Wnode.BufferSize
-            Marshal.WriteInt32(p, 40, 1);          // Wnode.ClientContext = QPC
-            Marshal.WriteInt32(p, 44, 0x20000);    // Wnode.Flags = WNODE_FLAG_TRACED_GUID
-            Marshal.WriteInt32(p, 48, 64);         // BufferSize (KB)
-            Marshal.WriteInt32(p, 64, 0x100);      // LogFileMode = EVENT_TRACE_REAL_TIME_MODE
-            Marshal.WriteInt32(p, 68, 1);          // FlushTimer (s)
-            Marshal.WriteInt32(p, 116, 120);       // LoggerNameOffset
-            return p;
-        }
-
-        static void StopSession()
-        {
-            IntPtr p = Props();
-            try { ControlTraceW(0, SessionName, p, 1); } catch { }
-            Marshal.FreeHGlobal(p);
-        }
-
-        public static bool Start()
-        {
-            if (Running) return true;
-            if (IntPtr.Size != 8 || !Program.IsAdmin) return false;
-            try
-            {
-                IntPtr p = Props();
-                uint r = StartTraceW(out session, SessionName, p);
-                Marshal.FreeHGlobal(p);
-                if (r == 183) // bestaat nog van een vorige keer
-                {
-                    StopSession();
-                    p = Props();
-                    r = StartTraceW(out session, SessionName, p);
-                    Marshal.FreeHGlobal(p);
-                }
-                if (r != 0) return false;
-                Guid g1 = Dxgi, g2 = D3d9;
-                EnableTraceEx2(session, ref g1, 1, 5, ulong.MaxValue, 0, 0, IntPtr.Zero);
-                EnableTraceEx2(session, ref g2, 1, 5, ulong.MaxValue, 0, 0, IntPtr.Zero);
-
-                // EVENT_TRACE_LOGFILEW (64-bit, 448 bytes)
-                if (callback == null) callback = OnEvent;
-                if (logfile == IntPtr.Zero)
-                {
-                    logfile = Marshal.AllocHGlobal(448);
-                    loggerName = Marshal.StringToHGlobalUni(SessionName);
-                }
-                for (int i = 0; i < 448; i++) Marshal.WriteByte(logfile, i, 0);
-                Marshal.WriteIntPtr(logfile, 8, loggerName);                       // LoggerName
-                Marshal.WriteInt32(logfile, 28, 0x100 | 0x10000000);               // REAL_TIME | EVENT_RECORD
-                Marshal.WriteIntPtr(logfile, 424, Marshal.GetFunctionPointerForDelegate(callback));
-                trace = OpenTraceW(logfile);
-                if (trace == ulong.MaxValue) { StopSession(); return false; }
-                lock (frames) frames.Clear();
-                Running = true;
-                ulong h = trace;
-                System.Threading.Thread th = new System.Threading.Thread(delegate()
-                {
-                    try { ProcessTrace(new ulong[] { h }, 1, IntPtr.Zero, IntPtr.Zero); } catch { }
-                    Running = false;
-                });
-                th.IsBackground = true;
-                th.Start();
-                return true;
-            }
-            catch { Running = false; return false; }
-        }
-
-        public static void Stop()
-        {
-            if (!Running && trace == ulong.MaxValue) return;
-            try { StopSession(); } catch { }
-            try { if (trace != ulong.MaxValue) CloseTrace(trace); } catch { }
-            trace = ulong.MaxValue;
-            Running = false;
-        }
-
-        static void OnEvent(IntPtr rec)
-        {
-            try
-            {
-                // EVENT_RECORD: ProcessId op 12, ProviderId op 24, EventDescriptor.Id op 40
-                uint d1 = (uint)Marshal.ReadInt32(rec, 24);
-                int id = (ushort)Marshal.ReadInt16(rec, 40);
-                bool present = (d1 == 0xCA11C036u && (id == 42 || id == 55)) || (d1 == 0x783ACA0Au && id == 1);
-                if (!present) return;
-                int pid = Marshal.ReadInt32(rec, 12);
-                long ts = Marshal.ReadInt64(rec, 16);   // TimeStamp (systeemtijd, 100 ns)
-                lock (frames)
-                {
-                    Queue<long> q;
-                    if (!frames.TryGetValue(pid, out q)) { q = new Queue<long>(); frames[pid] = q; }
-                    q.Enqueue(ts);
-                    while (q.Count > 0 && (q.Peek() < ts - 2 * Second || q.Count > 4000)) q.Dequeue();
-                }
-            }
-            catch { }
-        }
-
-        // FPS van een programma: gemiddelde tijd tussen de beelden van de laatste seconde
-        // (met de echte tijd van elk beeld, dus niet afhankelijk van wanneer Windows ze doorgeeft)
-        public static double Measure(int pid)
-        {
-            long now = DateTime.UtcNow.ToFileTimeUtc();
-            lock (frames)
-            {
-                // oude programma's opruimen
-                List<int> gone = new List<int>();
-                foreach (KeyValuePair<int, Queue<long>> kv in frames)
-                {
-                    long last = 0;
-                    foreach (long v in kv.Value) last = v;
-                    if (kv.Value.Count == 0 || last < now - 5 * Second) gone.Add(kv.Key);
-                }
-                foreach (int k in gone) frames.Remove(k);
-
-                Queue<long> q;
-                if (!frames.TryGetValue(pid, out q) || q.Count < 2) return -1;
-                long[] a = q.ToArray();
-                long newest = a[a.Length - 1];
-                if (newest < now - 3 * Second) return -1;   // game laat geen beelden meer zien
-                int first = a.Length - 1;
-                while (first > 0 && a[first - 1] >= newest - Second) first--;
-                int n = a.Length - 1 - first;
-                if (n < 1) return -1;
-                double span = (newest - a[first]) / (double)Second;
-                if (span <= 0) return -1;
-                return n / span;
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------ prestaties-overlay (blokje in een hoek)
-    public class PerfOverlay : Form
-    {
-        Settings s;
-        public int Fps = -1;
-        public float Hue = 0f;
-        int lastGamePid = 0;
-
-        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
-        [StructLayout(LayoutKind.Sequential)] struct PT { public int x, y; public PT(int x, int y) { this.x = x; this.y = y; } }
-        [StructLayout(LayoutKind.Sequential)] struct SZ { public int cx, cy; public SZ(int cx, int cy) { this.cx = cx; this.cy = cy; } }
-        [StructLayout(LayoutKind.Sequential, Pack = 1)] struct BLEND { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
-        [DllImport("user32.dll")] static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref PT pptDst, ref SZ psize, IntPtr hdcSrc, ref PT pprSrc, int crKey, ref BLEND pblend, int dwFlags);
-        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hWnd);
-        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-        [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hDC);
-        [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
-        [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
-        [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr hObject);
-        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-
-        public PerfOverlay(Settings settings)
-        {
-            s = settings;
-            FormBorderStyle = FormBorderStyle.None;
-            ShowInTaskbar = false;
-            TopMost = true;
-            StartPosition = FormStartPosition.Manual;
-            Bounds = new Rectangle(0, 0, 100, 100);
-            Timer t = new Timer();
-            t.Interval = 2500;
-            t.Tick += delegate { KeepOnTop(); };
-            t.Start();
-        }
-
-        protected override bool ShowWithoutActivation { get { return true; } }
-
-        protected override CreateParams CreateParams
-        {
-            get
-            {
-                CreateParams cp = base.CreateParams;
-                cp.ExStyle |= 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8;
-                return cp;
-            }
-        }
-
-        void KeepOnTop()
-        {
-            if (Visible && IsHandleCreated)
-                SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0200 | 0x0400);
-        }
-
-        static float DpiScale
-        {
-            get { try { using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) return g.DpiX / 96f; } catch { return 1f; } }
-        }
-
-        bool Vip { get { return DiscordGate.IsVip; } }
-
-        double smooth = 0;
-
-        // Twee keer per seconde: FPS van de game op de voorgrond bijwerken
-        public void Tick()
-        {
-            if (!s.PerfOn) return;
-            if (s.PerfFps && EtwFps.Running)
-            {
-                uint pid = 0;
-                try { GetWindowThreadProcessId(GetForegroundWindow(), out pid); } catch { }
-                if (pid != 0 && pid != (uint)System.Diagnostics.Process.GetCurrentProcess().Id) lastGamePid = (int)pid;
-                double f = lastGamePid != 0 ? EtwFps.Measure(lastGamePid) : -1;
-                if (f <= 0) { Fps = -1; smooth = 0; }
-                else
-                {
-                    smooth = smooth > 0 ? smooth * 0.4 + f * 0.6 : f;   // licht afgevlakt
-                    Fps = (int)Math.Round(smooth);
-                }
-            }
-            else { Fps = -1; smooth = 0; }
-            Render();
-        }
-
-        static Color LoadColor(int v, int warn, int bad, bool lowIsBad)
-        {
-            Color good = Color.FromArgb(110, 231, 160), mid = Color.FromArgb(252, 211, 77), hot = Color.FromArgb(248, 113, 113);
-            if (v < 0) return Color.FromArgb(140, 140, 150);
-            if (lowIsBad) return v < bad ? hot : (v < warn ? mid : good);
-            return v >= bad ? hot : (v >= warn ? mid : good);
-        }
-
-        List<string[]> Lines(out List<Color> colors)
-        {
-            List<string[]> l = new List<string[]>();
-            colors = new List<Color>();
-            if (s.PerfFps)
-            {
-                l.Add(new string[] { "FPS", Fps > 0 ? Fps.ToString() : "\u2014" });
-                colors.Add(LoadColor(Fps > 0 ? Fps : -1, 60, 30, true));
-            }
-            if (s.PerfCpu)
-            {
-                int v = PerfStats.Cpu;
-                l.Add(new string[] { "CPU", v >= 0 ? v + "%" : "\u2014" }); colors.Add(LoadColor(v, 60, 90, false));
-            }
-            if (s.PerfGpu)
-            {
-                int v = PerfStats.Gpu;
-                l.Add(new string[] { "GPU", v >= 0 ? v + "%" : "\u2014" }); colors.Add(LoadColor(v, 60, 90, false));
-            }
-            if (s.PerfRam)
-            {
-                int v = PerfStats.RamPct;
-                CultureInfo nl = new CultureInfo("nl-NL");
-                l.Add(new string[] { "RAM", v >= 0 ? PerfStats.RamUsed.ToString("0.0", nl) + (s.PerfLayout == 0 ? "/" : " / ") + Math.Round(PerfStats.RamTotal).ToString("0", nl) + " GB" : "\u2014" });
-                colors.Add(LoadColor(v, 60, 90, false));
-            }
-            if (s.PerfPing)
-            {
-                int v = PerfStats.Ping;
-                l.Add(new string[] { "PING", v >= 0 ? v + " ms" : "\u2014" }); colors.Add(LoadColor(v, 60, 120, false));
-            }
-            return l;
-        }
-
-        Color TextColor
-        {
-            get
-            {
-                if (Vip && s.PerfGold) return Color.FromArgb(245, 200, 80);
-                if (Vip) return Color.FromArgb(255, s.PerfColor.R, s.PerfColor.G, s.PerfColor.B);
-                return Color.White;
-            }
-        }
-
-        // Vaste breedte per onderdeel, zodat het balkje niet verspringt
-        static string Template(string label)
-        {
-            switch (label)
-            {
-                case "FPS": return "000";
-                case "CPU": case "GPU": return "100%";
-                case "RAM": return "00,0/00 GB";
-                case "PING": return "000 ms";
-                default: return "";
-            }
-        }
-
-        public void Render()
-        {
-            if (!IsHandleCreated || !Visible) return;
-            float sc = DpiScale;
-            bool row = s.PerfLayout == 0;
-            float px = (s.PerfSize == 0 ? 13f : (s.PerfSize == 2 ? 18f : 15f)) * sc;
-            List<Color> cols;
-            List<string[]> lines = Lines(out cols);
-            bool empty = lines.Count == 0;
-            if (empty) lines.Add(new string[] { "", "Kies wat je wilt zien" });
-            StringFormat sf = StringFormat.GenericTypographic;
-            using (Font lf = new Font("Segoe UI", px * 0.68f, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Font vf = new Font("Segoe UI", px, FontStyle.Bold, GraphicsUnit.Pixel))
-            {
-                float lAsc = lf.Size * lf.FontFamily.GetCellAscent(lf.Style) / lf.FontFamily.GetEmHeight(lf.Style);
-                float vAsc = vf.Size * vf.FontFamily.GetCellAscent(vf.Style) / vf.FontFamily.GetEmHeight(vf.Style);
-                int n = lines.Count;
-                float[] lw = new float[n], vw = new float[n], cellW = new float[n];
-                float labelCol = 0;
-                using (Bitmap tmp = new Bitmap(1, 1))
-                using (Graphics mg = Graphics.FromImage(tmp))
-                {
-                    for (int i = 0; i < n; i++)
-                    {
-                        lw[i] = lines[i][0].Length > 0 ? mg.MeasureString(lines[i][0], lf, 1000, sf).Width : 0;
-                        vw[i] = Math.Max(mg.MeasureString(lines[i][1], vf, 1000, sf).Width, mg.MeasureString(Template(lines[i][0]), vf, 1000, sf).Width);
-                        labelCol = Math.Max(labelCol, lw[i]);
-                    }
-                }
-                float padX = (row ? 14 : 12) * sc, padY = 9 * sc, labGap = 6 * sc, sepGap = 13 * sc;
-                float rowH = (float)Math.Ceiling(px * 1.5f);
-                int w, h;
-                if (row)
-                {
-                    float total = padX * 2;
-                    for (int i = 0; i < n; i++)
-                    {
-                        cellW[i] = (lw[i] > 0 ? lw[i] + labGap : 0) + vw[i];
-                        total += cellW[i] + (i > 0 ? sepGap * 2 : 0);
-                    }
-                    w = (int)Math.Ceiling(total);
-                    h = (int)Math.Ceiling(px * 2.15f);
-                }
-                else
-                {
-                    float vmax = 0;
-                    for (int i = 0; i < n; i++) vmax = Math.Max(vmax, vw[i]);
-                    w = (int)Math.Ceiling(padX * 2 + labelCol + 18 * sc + vmax);
-                    h = (int)Math.Ceiling(padY * 2 + rowH * n - px * 0.2f);
-                }
-
-                Rectangle scr = Program.TargetScreen(s).Bounds;
-                int margin = (int)(14 * sc), x, y;
-                if (Vip && s.PerfFree)
-                {
-                    x = scr.X + (scr.Width - w) * Math.Max(0, Math.Min(100, s.PerfX)) / 100;
-                    y = scr.Y + (scr.Height - h) * Math.Max(0, Math.Min(100, s.PerfY)) / 100;
-                }
-                else
-                {
-                    int colPos = s.PerfPlace % 3;
-                    bool bottom = s.PerfPlace >= 3;
-                    x = colPos == 0 ? scr.X + margin : (colPos == 1 ? scr.X + (scr.Width - w) / 2 : scr.Right - w - margin);
-                    y = bottom ? scr.Bottom - h - margin : scr.Y + margin;
-                }
-                if (Left != x || Top != y || Width != w || Height != h) SetBounds(x, y, w, h);
-
-                using (Bitmap bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb))
-                {
-                    using (Graphics g = Graphics.FromImage(bmp))
-                    {
-                        g.Clear(Color.Transparent);
-                        g.SmoothingMode = SmoothingMode.AntiAlias;
-                        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-                        Color bg = Vip ? s.PerfBgColor : Color.FromArgb(14, 14, 18);
-                        int a = 255 * Math.Max(0, Math.Min(100, s.PerfBg)) / 100;
-                        RectangleF box = new RectangleF(0.5f, 0.5f, w - 1.5f, h - 1.5f);
-                        float rad = row ? Math.Min(h / 2f - 1, 10 * sc) : 9 * sc;
-                        using (GraphicsPath gp = Round(box, rad))
-                        {
-                            using (SolidBrush b = new SolidBrush(Color.FromArgb(a, bg.R, bg.G, bg.B))) g.FillPath(b, gp);
-                            Color border = Color.FromArgb(Math.Min(60, 20 + a / 6), 255, 255, 255);
-                            float bw = 1f;
-                            if (Vip && s.PerfRgb) { border = Hsv(Hue); bw = Math.Max(1.5f, 2f * sc); }
-                            else if (Vip && s.PerfGold) { border = Color.FromArgb(230, 190, 70); bw = Math.Max(1.5f, 1.6f * sc); }
-                            using (Pen pn = new Pen(border, bw)) g.DrawPath(pn, gp);
-                        }
-                        Color txt = TextColor;
-                        Color label = Color.FromArgb(150, txt.R, txt.G, txt.B);
-                        using (SolidBrush lb = new SolidBrush(label))
-                        using (SolidBrush shadow = new SolidBrush(Color.FromArgb(90, 0, 0, 0)))
-                        using (Pen sep = new Pen(Color.FromArgb(45, txt.R, txt.G, txt.B), Math.Max(1f, sc)))
-                        {
-                            float cx = padX;
-                            for (int i = 0; i < n; i++)
-                            {
-                                Color vc = (!empty && s.PerfLoadColors && i < cols.Count) ? cols[i] : txt;
-                                if (Vip && s.PerfRgb && !s.PerfLoadColors) vc = Hsv((Hue + i * 40) % 360f);
-                                float baseY, lx, vx;
-                                if (row)
-                                {
-                                    if (i > 0)
-                                    {
-                                        cx += sepGap;
-                                        g.DrawLine(sep, cx, h * 0.3f, cx, h * 0.7f);
-                                        cx += sepGap;
-                                    }
-                                    baseY = h / 2f + px * 0.36f;
-                                    lx = cx;
-                                    vx = cx + (lw[i] > 0 ? lw[i] + labGap : 0);
-                                    cx += cellW[i];
-                                }
-                                else
-                                {
-                                    baseY = padY + i * rowH + vAsc;
-                                    lx = padX;
-                                    float realW = g.MeasureString(lines[i][1], vf, 1000, sf).Width;
-                                    vx = w - padX - realW;
-                                }
-                                if (lines[i][0].Length > 0) g.DrawString(lines[i][0], lf, lb, lx, baseY - lAsc, sf);
-                                g.DrawString(lines[i][1], vf, shadow, vx + 1, baseY - vAsc + 1, sf);
-                                using (SolidBrush vb = new SolidBrush(vc)) g.DrawString(lines[i][1], vf, vb, vx, baseY - vAsc, sf);
-                            }
-                        }
-                    }
-                    IntPtr screen = GetDC(IntPtr.Zero);
-                    IntPtr mem = CreateCompatibleDC(screen);
-                    IntPtr hbmp = IntPtr.Zero, old = IntPtr.Zero;
-                    try
-                    {
-                        hbmp = bmp.GetHbitmap(Color.FromArgb(0));
-                        old = SelectObject(mem, hbmp);
-                        PT dst = new PT(x, y), src = new PT(0, 0);
-                        SZ size = new SZ(w, h);
-                        BLEND bl = new BLEND();
-                        bl.SourceConstantAlpha = 255;
-                        bl.AlphaFormat = 1;
-                        UpdateLayeredWindow(Handle, screen, ref dst, ref size, mem, ref src, 0, ref bl, 2);
-                    }
-                    finally
-                    {
-                        if (old != IntPtr.Zero) SelectObject(mem, old);
-                        if (hbmp != IntPtr.Zero) DeleteObject(hbmp);
-                        DeleteDC(mem);
-                        ReleaseDC(IntPtr.Zero, screen);
-                    }
-                }
-            }
-        }
-
-        static GraphicsPath Round(RectangleF r, float rad)
-        {
-            GraphicsPath p = new GraphicsPath();
-            float d = rad * 2;
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
-        }
-
-        static Color Hsv(float hue)
-        {
-            float h = (hue % 360f) / 60f;
-            int i = (int)Math.Floor(h) % 6;
-            float f = h - (float)Math.Floor(h);
-            int q = (int)(255 * (1 - f)), u = (int)(255 * f);
-            switch (i)
-            {
-                case 0: return Color.FromArgb(255, u, 0);
-                case 1: return Color.FromArgb(q, 255, 0);
-                case 2: return Color.FromArgb(0, 255, u);
-                case 3: return Color.FromArgb(0, q, 255);
-                case 4: return Color.FromArgb(u, 0, 255);
-                default: return Color.FromArgb(255, 0, q);
-            }
-        }
-
-        public void ApplySettings()
-        {
-            bool show = s.PerfOn;
-            if (show && !Visible) Show();
-            if (!show && Visible) Hide();
-            if (show) { Render(); KeepOnTop(); }
-        }
-    }
-
     // ------------------------------------------------------------------ programma
     public static class Program
     {
@@ -5329,7 +4612,6 @@ fetch('/cancel');}
             {
                 if (!SetWindowDisplayAffinity(overlay.Handle, a)) ok = false;
                 if (!SetWindowDisplayAffinity(menu.Handle, a)) ok = false;
-                if (perf != null && perf.IsHandleCreated) SetWindowDisplayAffinity(perf.Handle, a);
             }
             catch { ok = false; }
             return ok;
@@ -5341,58 +4623,25 @@ fetch('/cancel');}
         static Settings S;
         static MenuForm menu;
         static Overlay overlay;
-        static PerfOverlay perf;
         static Action<int> capture;
-        static string[] startArgs = new string[0];
 
-        public static readonly bool IsAdmin = CheckAdmin();
-        static bool CheckAdmin()
+        // Opruimen: de FPS-meting van de oude Prestaties-overlay (1.19.x) kan nog in Windows draaien
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern uint ControlTraceW(ulong handle, string name, IntPtr props, uint code);
+        static void StopOldFpsTrace()
         {
-            try { return new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator); }
-            catch { return false; }
-        }
-
-        // Start de app opnieuw als beheerder (Windows vraagt om toestemming). false = geweigerd of mislukt.
-        static bool RelaunchAsAdmin()
-        {
+            if (IntPtr.Size != 8) return;
+            IntPtr p = IntPtr.Zero;
             try
             {
-                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(Application.ExecutablePath, "--elevated");
-                psi.UseShellExecute = true;
-                psi.Verb = "runas";
-                System.Diagnostics.Process.Start(psi);
-                return true;
+                const int size = 1024;
+                p = Marshal.AllocHGlobal(size);
+                for (int i = 0; i < size; i++) Marshal.WriteByte(p, i, 0);
+                Marshal.WriteInt32(p, 0, size);
+                Marshal.WriteInt32(p, 116, 120);
+                ControlTraceW(0, "CustomCrosshairFps", p, 1);
             }
-            catch { return false; }
-        }
-
-        // Prestaties-overlay en FPS-meting aan/uit zetten volgens de instellingen
-        public static void ApplyPerf()
-        {
-            if (perf == null) return;
-            PerfStats.Want = S.PerfOn;
-            if (S.PerfOn) PerfStats.Start();
-            if (S.PerfOn && S.PerfFps && IsAdmin) EtwFps.Start(); else EtwFps.Stop();
-            perf.ApplySettings();
-            ApplyStreamProof();
-        }
-
-        public static void SetPerf(bool on)
-        {
-            S.PerfOn = on;
-            S.Save();
-            ApplyPerf();
-        }
-
-        // FPS heeft beheerdersrechten nodig: vragen of de app opnieuw mag opstarten
-        public static void AskFpsAdmin(IWin32Window owner)
-        {
-            if (IsAdmin || !S.PerfOn || !S.PerfFps) return;
-            if (MessageBox.Show(owner, "Om je FPS te kunnen zien moet Custom Crosshair als beheerder draaien. Windows vraagt je daarna om toestemming.\n\nNu opnieuw opstarten als beheerder?\n\n(Klik je Nee, dan werkt de rest gewoon en staat er bij FPS een streepje.)",
-                "Custom Crosshair", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-            S.Save();
-            if (RelaunchAsAdmin()) ExitNow();
-            else MessageBox.Show(owner, "Opnieuw opstarten als beheerder is niet gelukt (of je klikte op Nee). FPS blijft uit, de rest werkt gewoon.", "Custom Crosshair");
+            catch { }
+            finally { if (p != IntPtr.Zero) Marshal.FreeHGlobal(p); }
         }
 
         static string StartupFile
@@ -5443,11 +4692,6 @@ fetch('/cancel');}
                 return;
             }
             if (vk == S.MenuKey) menu.Toggle();
-            else if (S.PerfKey > 0 && vk == S.PerfKey)
-            {
-                SetPerf(!S.PerfOn);
-                if (menu.Visible) menu.RefreshAll();
-            }
         }
 
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
@@ -5507,8 +4751,6 @@ fetch('/cancel');}
             if (S.Hitmarker) { S.Hitmarker = false; changed = true; }
             if (S.GoldMenu) { S.GoldMenu = false; changed = true; }
             if (S.MenuRgb) { S.MenuRgb = false; changed = true; }
-            if (S.PerfRgb || S.PerfGold || S.PerfFree) { S.PerfRgb = false; S.PerfGold = false; S.PerfFree = false; changed = true; }
-            if (S.PerfColor.ToArgb() != Color.White.ToArgb() || S.PerfBgColor.ToArgb() != Color.Black.ToArgb()) { S.PerfColor = Color.White; S.PerfBgColor = Color.Black; changed = true; }
             Theme.ApplyFor(S);
             if (Array.IndexOf(MenuForm.VipAccents, Color.FromArgb(255, S.Accent.R, S.Accent.G, S.Accent.B)) >= 0) { S.Accent = Color.FromArgb(34, 211, 238); Theme.ApplyFor(S); changed = true; }
             if (changed) S.Save();
@@ -5575,7 +4817,6 @@ fetch('/cancel');}
             try
             {
                 if (overlay != null) overlay.Hide();
-                if (perf != null) perf.Hide();
                 if (menu != null) menu.Hide();
             }
             catch { }
@@ -5584,7 +4825,6 @@ fetch('/cancel');}
         public static void ExitNow()
         {
             Quitting = true;
-            try { EtwFps.Stop(); } catch { }
             try { KeyHook.Stop(); } catch { }
             try { if (tray != null) { tray.Visible = false; tray.Dispose(); } } catch { }
             Environment.Exit(0);
@@ -5593,7 +4833,6 @@ fetch('/cancel');}
         public static void Quit()
         {
             Quitting = true;
-            try { EtwFps.Stop(); } catch { }
             KeyHook.Stop();
             if (tray != null) { tray.Visible = false; tray.Dispose(); }
             Application.Exit();
@@ -5602,7 +4841,6 @@ fetch('/cancel');}
         [STAThread]
         public static void Main(string[] args)
         {
-            startArgs = args ?? new string[0];
             Run(Application.ExecutablePath);
         }
 
@@ -5610,25 +4848,10 @@ fetch('/cancel');}
         {
             ScriptPath = scriptPath;
             Migrate();
-            bool elevatedStart = Array.IndexOf(startArgs, "--elevated") >= 0;
-            // FPS staat aan: meteen als beheerder opstarten (Windows vraagt om toestemming)
-            if (!IsAdmin && !elevatedStart)
-            {
-                Settings pre = Settings.Load();
-                if (pre.PerfOn && pre.PerfFps && RelaunchAsAdmin()) return;
-            }
+            StopOldFpsTrace();
             bool created = false;
             System.Threading.Mutex mutex = null;
-            try
-            {
-                mutex = new System.Threading.Mutex(true, "CustomCrosshair_EnkeleInstantie", out created);
-                // net opnieuw gestart als beheerder: even wachten tot de oude app dicht is
-                if (!created && elevatedStart)
-                {
-                    try { created = mutex.WaitOne(15000); }
-                    catch (System.Threading.AbandonedMutexException) { created = true; }
-                }
-            }
+            try { mutex = new System.Threading.Mutex(true, "CustomCrosshair_EnkeleInstantie", out created); }
             catch (UnauthorizedAccessException) { created = false; }
             if (!created)
             {
@@ -5722,23 +4945,7 @@ fetch('/cancel');}
 
             overlay.Show();
             overlay.ApplySettings();
-            perf = new PerfOverlay(S);
             ApplyStreamProof();
-            ApplyPerf();
-
-            Timer perfTimer = new Timer();
-            perfTimer.Interval = 500;
-            perfTimer.Tick += delegate { if (S.PerfOn) perf.Tick(); };
-            perfTimer.Start();
-            Timer perfRgbTimer = new Timer();
-            perfRgbTimer.Interval = 50;
-            perfRgbTimer.Tick += delegate
-            {
-                if (!S.PerfOn || !S.PerfRgb || !DiscordGate.IsVip) return;
-                perf.Hue = (perf.Hue + 3f) % 360f;
-                perf.Render();
-            };
-            perfRgbTimer.Start();
 
             Timer menuRgbTimer = new Timer();
             menuRgbTimer.Interval = 80;
